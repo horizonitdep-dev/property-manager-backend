@@ -1,0 +1,20 @@
+import * as Joi from 'joi';
+
+export const validationSchema = Joi.object({
+  NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
+  PORT: Joi.number().default(3000),
+  API_PREFIX: Joi.string().default('api'),
+  CORS_ORIGIN: Joi.string().default('http://localhost:3001'),
+  DATABASE_URL: Joi.string().required(),
+  JWT_ACCESS_SECRET: Joi.string().min(32).required(),
+  JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
+  JWT_REFRESH_SECRET: Joi.string().min(32).required(),
+  JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
+  SEED_MANAGER_EMAIL: Joi.string().email().default('manager@horizonpm.com'),
+  SEED_MANAGER_PASSWORD: Joi.string().min(8).default('ChangeMe123!'),
+  SEED_SECRETARY_EMAIL: Joi.string().email().default('secretary@horizonpm.com'),
+  SEED_SECRETARY_PASSWORD: Joi.string().min(8).default('ChangeMe123!'),
+  THROTTLE_TTL: Joi.number().default(60),
+  THROTTLE_LIMIT: Joi.number().default(100),
+  LOG_LEVEL: Joi.string().valid('error', 'warn', 'info', 'debug').default('info'),
+});

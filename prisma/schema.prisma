@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  MANAGER
+  SECRETARY
+}
+
+enum BuildingType {
+  RESIDENTIAL
+  COMMERCIAL
+  MIXED_USE
+}
+
+enum ConstructionStatus {
+  COMPLETE
+  UNDER_CONSTRUCTION
+}
+
+model User {
+  id               String    @id @default(uuid()) @db.Uuid
+  email            String    @unique
+  passwordHash     String    @map("password_hash")
+  fullName         String    @map("full_name")
+  role             UserRole
+  isActive         Boolean   @default(true) @map("is_active")
+  lastLoginAt      DateTime? @map("last_login_at")
+  refreshTokenHash String?   @map("refresh_token_hash")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  createdBuildings Building[] @relation("BuildingCreatedBy")
+  updatedBuildings Building[] @relation("BuildingUpdatedBy")
+
+  @@index([email])
+  @@map("users")
+}
+
+model Building {
+  id                 String             @id @default(uuid()) @db.Uuid
+  name               String
+  code               String             @unique
+  address            String
+  city               String
+  buildingType       BuildingType       @map("building_type")
+  totalFloors        Int                @map("total_floors")
+  yearBuilt          Int?               @map("year_built")
+  totalUnits         Int?               @map("total_units")
+  constructionStatus ConstructionStatus @default(COMPLETE) @map("construction_status")
+  notes              String?            @db.Text
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  deletedAt          DateTime?          @map("deleted_at")
+
+  createdById String  @map("created_by") @db.Uuid
+  updatedById String? @map("updated_by") @db.Uuid
+
+  createdBy User  @relation("BuildingCreatedBy", fields: [createdById], references: [id])
+  updatedBy User? @relation("BuildingUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([code])
+  @@index([name])
+  @@index([deletedAt])
+  @@map("buildings")
+}

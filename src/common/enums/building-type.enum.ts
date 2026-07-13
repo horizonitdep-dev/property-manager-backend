@@ -1,0 +1,5 @@
+export enum BuildingType {
+  RESIDENTIAL = 'RESIDENTIAL',
+  COMMERCIAL = 'COMMERCIAL',
+  MIXED_USE = 'MIXED_USE',
+}
