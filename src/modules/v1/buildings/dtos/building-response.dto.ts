@@ -27,8 +27,8 @@ export class BuildingResponseDto {
   @ApiPropertyOptional()
   yearBuilt?: number | null;
 
-  @ApiPropertyOptional()
-  totalUnits?: number | null;
+  @ApiProperty({ description: 'Live count of non-deleted properties in this building' })
+  totalUnits!: number;
 
   @ApiProperty({ enum: ConstructionStatus })
   constructionStatus!: ConstructionStatus;

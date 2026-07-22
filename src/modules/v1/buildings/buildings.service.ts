@@ -46,6 +46,9 @@ export class BuildingsService {
         skip,
         take: limit,
         orderBy: { [sortBy]: sortOrder },
+        include: {
+          _count: { select: { properties: { where: { deletedAt: null } } } },
+        },
       }),
       this.prisma.building.count({ where }),
     ]);
@@ -53,7 +56,7 @@ export class BuildingsService {
     const totalPages = Math.ceil(total / limit);
 
     return {
-      items,
+      items: items.map((item) => this.withComputedTotalUnits(item)),
       meta: {
         total,
         page,
@@ -68,13 +71,16 @@ export class BuildingsService {
   async findOne(id: string) {
     const building = await this.prisma.building.findFirst({
       where: { id, deletedAt: null },
+      include: {
+        _count: { select: { properties: { where: { deletedAt: null } } } },
+      },
     });
 
     if (!building) {
       throw new NotFoundException(`Building not found`);
     }
 
-    return building;
+    return this.withComputedTotalUnits(building);
   }
 
   async create(dto: CreateBuildingDto, userId: string) {
@@ -91,6 +97,9 @@ export class BuildingsService {
         ...dto,
         createdById: userId,
       },
+      include: {
+        _count: { select: { properties: { where: { deletedAt: null } } } },
+      },
     });
 
     this.logger.log(`Building created`, {
@@ -99,7 +108,7 @@ export class BuildingsService {
       action: 'CREATE_BUILDING',
     });
 
-    return building;
+    return this.withComputedTotalUnits(building);
   }
 
   async update(id: string, dto: UpdateBuildingDto, userId: string) {
@@ -117,6 +126,9 @@ export class BuildingsService {
     const building = await this.prisma.building.update({
       where: { id },
       data: { ...dto, updatedById: userId },
+      include: {
+        _count: { select: { properties: { where: { deletedAt: null } } } },
+      },
     });
 
     this.logger.log(`Building updated`, {
@@ -125,7 +137,7 @@ export class BuildingsService {
       action: 'UPDATE_BUILDING',
     });
 
-    return building;
+    return this.withComputedTotalUnits(building);
   }
 
   async remove(id: string, userId: string) {
@@ -134,6 +146,9 @@ export class BuildingsService {
     const building = await this.prisma.building.update({
       where: { id },
       data: { deletedAt: new Date(), updatedById: userId },
+      include: {
+        _count: { select: { properties: { where: { deletedAt: null } } } },
+      },
     });
 
     this.logger.log(`Building soft deleted`, {
@@ -142,6 +157,20 @@ export class BuildingsService {
       action: 'DELETE_BUILDING',
     });
 
-    return building;
+    return this.withComputedTotalUnits(building);
+  }
+
+  /**
+   * Surfaces the live, non-deleted property count as `totalUnits` instead of
+   * the manually-entered column, which is kept only as a fallback.
+   */
+  private withComputedTotalUnits<T extends { totalUnits?: number | null; _count?: { properties: number } }>(
+    building: T,
+  ): Omit<T, '_count'> & { totalUnits: number } {
+    const { _count, ...rest } = building;
+    return {
+      ...rest,
+      totalUnits: _count ? _count.properties : (rest.totalUnits ?? 0),
+    };
   }
 }

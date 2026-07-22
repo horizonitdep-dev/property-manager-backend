@@ -10,7 +10,7 @@ export class BuildingEntity {
   buildingType!: BuildingType;
   totalFloors!: number;
   yearBuilt?: number | null;
-  totalUnits?: number | null;
+  totalUnits!: number;
   constructionStatus!: ConstructionStatus;
   notes?: string | null;
   createdById!: string;
