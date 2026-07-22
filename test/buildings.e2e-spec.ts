@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, VersioningType } from '@nestjs/common';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { ValidationPipe } from '../src/common/pipes/validation.pipe';
@@ -24,6 +24,7 @@ describe('BuildingsController (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api');
+    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
     app.useGlobalPipes(new ValidationPipe());
     app.useGlobalInterceptors(new ResponseInterceptor());
     app.useGlobalFilters(new PrismaExceptionFilter(), new HttpExceptionFilter());
@@ -120,7 +121,9 @@ describe('BuildingsController (e2e)', () => {
       if (res.status === 201) {
         expect(res.body.success).toBe(true);
         expect(res.body.data.code).toBe('E2E-001');
-        expect(res.body.data.totalUnits).toBe(40);
+        // totalUnits is now the live count of non-deleted properties, not the
+        // manually-entered value — a freshly created building has none yet.
+        expect(res.body.data.totalUnits).toBe(0);
         expect(res.body.data.constructionStatus).toBe('UNDER_CONSTRUCTION');
         createdBuildingId = res.body.data.id as string;
       }
