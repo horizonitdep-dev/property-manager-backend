@@ -1,4 +1,11 @@
-import { PrismaClient, UserRole, BuildingType, ConstructionStatus } from '@prisma/client';
+import {
+  PrismaClient,
+  UserRole,
+  BuildingType,
+  ConstructionStatus,
+  UnitType,
+  PropertyStatus,
+} from '@prisma/client';
 import * as argon2 from 'argon2';
 
 const prisma = new PrismaClient();
@@ -45,7 +52,7 @@ async function main() {
     },
   });
 
-  await prisma.building.upsert({
+  const building1 = await prisma.building.upsert({
     where: { code: 'B001' },
     update: {},
     create: {
@@ -81,9 +88,75 @@ async function main() {
     },
   });
 
+  const properties = [
+    {
+      unitNumber: '101',
+      floor: 1,
+      unitType: UnitType.APARTMENT,
+      bedrooms: 1,
+      bathrooms: 1,
+      sizeSqm: 65,
+      monthlyRent: 2000,
+      status: PropertyStatus.OCCUPIED,
+    },
+    {
+      unitNumber: '102',
+      floor: 1,
+      unitType: UnitType.APARTMENT,
+      bedrooms: 2,
+      bathrooms: 2,
+      sizeSqm: 95,
+      monthlyRent: 2500,
+      status: PropertyStatus.OCCUPIED,
+    },
+    {
+      unitNumber: '201',
+      floor: 2,
+      unitType: UnitType.APARTMENT,
+      bedrooms: 2,
+      bathrooms: 2,
+      sizeSqm: 100,
+      monthlyRent: 2800,
+      status: PropertyStatus.VACANT,
+    },
+    {
+      unitNumber: 'Shop 1',
+      floor: 0,
+      unitType: UnitType.SHOP,
+      bedrooms: null,
+      bathrooms: 1,
+      sizeSqm: 40,
+      monthlyRent: 3500,
+      status: PropertyStatus.OCCUPIED,
+    },
+    {
+      unitNumber: 'Office 5',
+      floor: 5,
+      unitType: UnitType.OFFICE,
+      bedrooms: null,
+      bathrooms: 1,
+      sizeSqm: 55,
+      monthlyRent: 3000,
+      status: PropertyStatus.VACANT,
+    },
+  ];
+
+  for (const property of properties) {
+    await prisma.property.upsert({
+      where: { buildingId_unitNumber: { buildingId: building1.id, unitNumber: property.unitNumber } },
+      update: {},
+      create: {
+        ...property,
+        buildingId: building1.id,
+        createdById: manager.id,
+      },
+    });
+  }
+
   console.log('Seed completed:', {
     manager: manager.email,
     secretary: secretary.email,
+    properties: properties.length,
   });
 }
 

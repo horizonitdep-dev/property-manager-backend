@@ -23,6 +23,22 @@ enum ConstructionStatus {
   UNDER_CONSTRUCTION
 }
 
+enum UnitType {
+  APARTMENT
+  STUDIO
+  SHOP
+  OFFICE
+  ROOF_UNIT
+  WAREHOUSE
+}
+
+enum PropertyStatus {
+  OCCUPIED
+  VACANT
+  UNDER_MAINTENANCE
+  RESERVED
+}
+
 model User {
   id               String    @id @default(uuid()) @db.Uuid
   email            String    @unique
@@ -35,8 +51,10 @@ model User {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  createdBuildings Building[] @relation("BuildingCreatedBy")
-  updatedBuildings Building[] @relation("BuildingUpdatedBy")
+  createdBuildings  Building[] @relation("BuildingCreatedBy")
+  updatedBuildings  Building[] @relation("BuildingUpdatedBy")
+  createdProperties Property[] @relation("PropertyCreatedBy")
+  updatedProperties Property[] @relation("PropertyUpdatedBy")
 
   @@index([email])
   @@map("users")
@@ -64,8 +82,41 @@ model Building {
   createdBy User  @relation("BuildingCreatedBy", fields: [createdById], references: [id])
   updatedBy User? @relation("BuildingUpdatedBy", fields: [updatedById], references: [id])
 
+  properties Property[]
+
   @@index([code])
   @@index([name])
   @@index([deletedAt])
   @@map("buildings")
+}
+
+model Property {
+  id          String         @id @default(uuid()) @db.Uuid
+  unitNumber  String         @map("unit_number")
+  buildingId  String         @map("building_id") @db.Uuid
+  floor       Int
+  unitType    UnitType       @map("unit_type")
+  bedrooms    Int?
+  bathrooms   Int?
+  sizeSqm     Decimal?       @map("size_sqm") @db.Decimal(10, 2)
+  monthlyRent Decimal        @map("monthly_rent") @db.Decimal(12, 2)
+  status      PropertyStatus @default(VACANT)
+  notes       String?        @db.Text
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  deletedAt   DateTime?      @map("deleted_at")
+
+  createdById String  @map("created_by") @db.Uuid
+  updatedById String? @map("updated_by") @db.Uuid
+
+  building  Building @relation(fields: [buildingId], references: [id])
+  createdBy User     @relation("PropertyCreatedBy", fields: [createdById], references: [id])
+  updatedBy User?    @relation("PropertyUpdatedBy", fields: [updatedById], references: [id])
+
+  @@unique([buildingId, unitNumber])
+  @@index([buildingId])
+  @@index([unitNumber])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("properties")
 }
