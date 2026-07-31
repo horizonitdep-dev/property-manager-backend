@@ -14,13 +14,14 @@ export class StorageService {
   private readonly bucket: string;
 
   constructor(configService: ConfigService) {
-    this.bucket = configService.getOrThrow<string>('STORAGE_BUCKET');
+    // TODO: switch back to getOrThrow once STORAGE_* env vars are configured.
+    this.bucket = configService.get<string>('STORAGE_BUCKET') || 'unconfigured-bucket';
     this.client = new S3Client({
-      endpoint: configService.getOrThrow<string>('STORAGE_ENDPOINT'),
-      region: configService.getOrThrow<string>('STORAGE_REGION'),
+      endpoint: configService.get<string>('STORAGE_ENDPOINT') || 'http://localhost:9000',
+      region: configService.get<string>('STORAGE_REGION') || 'auto',
       credentials: {
-        accessKeyId: configService.getOrThrow<string>('STORAGE_ACCESS_KEY_ID'),
-        secretAccessKey: configService.getOrThrow<string>('STORAGE_SECRET_ACCESS_KEY'),
+        accessKeyId: configService.get<string>('STORAGE_ACCESS_KEY_ID') || 'unconfigured',
+        secretAccessKey: configService.get<string>('STORAGE_SECRET_ACCESS_KEY') || 'unconfigured',
       },
     });
   }
