@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  ConflictException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { User } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';

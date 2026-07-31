@@ -72,10 +72,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Change own password' })
   @ApiResponse({ status: 200, description: 'Password changed successfully' })
   @ApiResponse({ status: 401, description: 'Current password incorrect' })
-  async changePassword(
-    @CurrentUser('id') userId: string,
-    @Body() dto: ChangePasswordDto,
-  ) {
+  async changePassword(@CurrentUser('id') userId: string, @Body() dto: ChangePasswordDto) {
     await this.authService.changePassword(userId, dto);
     return { message: 'Password changed successfully' };
   }

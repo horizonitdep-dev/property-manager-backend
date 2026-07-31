@@ -51,10 +51,7 @@ describe('BuildingsService', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        BuildingsService,
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [BuildingsService, { provide: PrismaService, useValue: prisma }],
     }).compile();
 
     service = module.get<BuildingsService>(BuildingsService);
@@ -183,15 +180,13 @@ describe('BuildingsService', () => {
         .mockResolvedValueOnce(mockBuilding)
         .mockResolvedValueOnce({ ...mockBuilding, id: 'other-id' });
 
-      await expect(
-        service.update('building-uuid', { code: 'B001' }, 'user-uuid'),
-      ).rejects.toThrow(ConflictException);
+      await expect(service.update('building-uuid', { code: 'B001' }, 'user-uuid')).rejects.toThrow(
+        ConflictException,
+      );
     });
 
     it('should update building', async () => {
-      prisma.building.findFirst
-        .mockResolvedValueOnce(mockBuilding)
-        .mockResolvedValueOnce(null);
+      prisma.building.findFirst.mockResolvedValueOnce(mockBuilding).mockResolvedValueOnce(null);
       prisma.building.update.mockResolvedValue({ ...mockBuilding, name: 'Updated Name' });
 
       const result = await service.update('building-uuid', { name: 'Updated Name' }, 'user-uuid');

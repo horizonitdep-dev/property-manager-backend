@@ -45,14 +45,12 @@ async function bootstrap() {
     .setTitle('Horizon Property Manager API')
     .setDescription('Backend API for Horizon Property Manager')
     .setVersion('1.0')
-    .addBearerAuth(
-      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-      'access-token',
-    )
+    .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'access-token')
     .addTag('Authentication')
     .addTag('Users')
     .addTag('Buildings')
     .addTag('Properties')
+    .addTag('Tenants')
     .addTag('Health')
     .addServer('http://localhost:3000', 'Local development')
     .addServer('https://api.horizonpm.com', 'Production')

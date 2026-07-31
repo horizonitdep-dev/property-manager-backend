@@ -6,10 +6,12 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 import { validationSchema } from './config/validation.schema';
 import { DatabaseModule } from './database/prisma.module';
 import { LoggerModule } from './shared/logger/logger.module';
+import { StorageModule } from './shared/storage/storage.module';
 import { AuthModule } from './modules/v1/auth/auth.module';
 import { UsersModule } from './modules/v1/users/users.module';
 import { BuildingsModule } from './modules/v1/buildings/buildings.module';
 import { PropertiesModule } from './modules/v1/properties/properties.module';
+import { TenantsModule } from './modules/v1/tenants/tenants.module';
 import { HealthModule } from './health/health.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -28,11 +30,13 @@ import { RolesGuard } from './common/guards/roles.guard';
       },
     ]),
     LoggerModule,
+    StorageModule,
     DatabaseModule,
     AuthModule,
     UsersModule,
     BuildingsModule,
     PropertiesModule,
+    TenantsModule,
     HealthModule,
   ],
   providers: [

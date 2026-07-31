@@ -17,4 +17,9 @@ export const validationSchema = Joi.object({
   THROTTLE_TTL: Joi.number().default(60),
   THROTTLE_LIMIT: Joi.number().default(100),
   LOG_LEVEL: Joi.string().valid('error', 'warn', 'info', 'debug').default('info'),
+  STORAGE_ENDPOINT: Joi.string().required(),
+  STORAGE_BUCKET: Joi.string().required(),
+  STORAGE_ACCESS_KEY_ID: Joi.string().required(),
+  STORAGE_SECRET_ACCESS_KEY: Joi.string().required(),
+  STORAGE_REGION: Joi.string().required(),
 });

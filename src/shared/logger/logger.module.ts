@@ -3,7 +3,16 @@ import { WinstonModule } from 'nest-winston';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import * as winston from 'winston';
 
-const SENSITIVE_KEYS = ['password', 'passwordHash', 'refreshToken', 'accessToken', 'authorization'];
+const SENSITIVE_KEYS = [
+  'password',
+  'passwordHash',
+  'refreshToken',
+  'accessToken',
+  'authorization',
+  'emiratesIdNumber',
+  'passportNumber',
+  'tradeLicenseNumber',
+];
 
 const redactSensitive = winston.format((info) => {
   SENSITIVE_KEYS.forEach((key) => {
@@ -30,10 +39,7 @@ const redactSensitive = winston.format((info) => {
         ),
         transports: [
           new winston.transports.Console({
-            format: winston.format.combine(
-              winston.format.colorize(),
-              winston.format.simple(),
-            ),
+            format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
           }),
         ],
       }),

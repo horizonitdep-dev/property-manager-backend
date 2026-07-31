@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  UnauthorizedException,
-  ForbiddenException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';

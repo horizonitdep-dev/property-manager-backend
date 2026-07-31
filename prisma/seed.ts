@@ -5,6 +5,8 @@ import {
   ConstructionStatus,
   UnitType,
   PropertyStatus,
+  TenantType,
+  TenantStatus,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
 
@@ -153,10 +155,66 @@ async function main() {
     });
   }
 
+  const tenants = [
+    {
+      tenantType: TenantType.INDIVIDUAL,
+      nameEn: 'Ahmed Al Mansoori',
+      nameAr: 'أحمد المنصوري',
+      phone: '+971501234567',
+      email: 'ahmed.almansoori@example.com',
+      nationality: 'UAE',
+      emiratesIdNumber: '784-1990-1234567-1',
+      emiratesIdExpiry: new Date('2027-01-31'),
+      passportNumber: 'P1234567',
+      passportExpiry: new Date('2029-06-30'),
+    },
+    {
+      tenantType: TenantType.INDIVIDUAL,
+      nameEn: 'Fatima Hassan',
+      nameAr: 'فاطمة حسن',
+      phone: '+971502345678',
+      email: 'fatima.hassan@example.com',
+      nationality: 'Egypt',
+      emiratesIdNumber: '784-1988-7654321-2',
+      emiratesIdExpiry: new Date('2026-11-30'),
+      passportNumber: 'P7654321',
+      passportExpiry: new Date('2028-03-15'),
+    },
+    {
+      tenantType: TenantType.COMPANY,
+      nameEn: 'Al Falah Trading LLC',
+      nameAr: 'شركة الفلاح للتجارة ذ.م.م',
+      phone: '+97126543210',
+      email: 'info@alfalahtrading.example.com',
+      tradeLicenseNumber: 'CN-1234567',
+      tradeLicenseExpiry: new Date('2026-12-31'),
+      authorizedPersonNameEn: 'Khalid Al Suwaidi',
+      authorizedPersonNameAr: 'خالد السويدي',
+      authorizedPersonOccupation: 'General Manager',
+      authorizedPersonPhone: '+971503456789',
+    },
+  ];
+
+  // Tenant has no natural unique key to `upsert` against, so idempotency is
+  // done manually: skip creation if a tenant with this nameEn already exists.
+  for (const tenant of tenants) {
+    const existing = await prisma.tenant.findFirst({ where: { nameEn: tenant.nameEn } });
+    if (!existing) {
+      await prisma.tenant.create({
+        data: {
+          ...tenant,
+          status: TenantStatus.ACTIVE,
+          createdById: manager.id,
+        },
+      });
+    }
+  }
+
   console.log('Seed completed:', {
     manager: manager.email,
     secretary: secretary.email,
     properties: properties.length,
+    tenants: tenants.length,
   });
 }
 

@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  ConflictException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreateBuildingDto } from './dtos/create-building.dto';
@@ -164,9 +159,9 @@ export class BuildingsService {
    * Surfaces the live, non-deleted property count as `totalUnits` instead of
    * the manually-entered column, which is kept only as a fallback.
    */
-  private withComputedTotalUnits<T extends { totalUnits?: number | null; _count?: { properties: number } }>(
-    building: T,
-  ): Omit<T, '_count'> & { totalUnits: number } {
+  private withComputedTotalUnits<
+    T extends { totalUnits?: number | null; _count?: { properties: number } },
+  >(building: T): Omit<T, '_count'> & { totalUnits: number } {
     const { _count, ...rest } = building;
     return {
       ...rest,
