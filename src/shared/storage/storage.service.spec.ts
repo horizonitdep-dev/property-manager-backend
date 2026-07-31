@@ -26,7 +26,7 @@ describe('StorageService', () => {
     (getSignedUrl as jest.Mock).mockClear();
 
     const configService = {
-      getOrThrow: jest.fn((key: string) => {
+      get: jest.fn((key: string) => {
         const values: Record<string, string> = {
           STORAGE_ENDPOINT: 'https://test.r2.cloudflarestorage.com',
           STORAGE_BUCKET: 'test-bucket',

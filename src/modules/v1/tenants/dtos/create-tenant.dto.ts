@@ -43,13 +43,13 @@ export class CreateTenantDto {
   phone!: string;
 
   @ApiPropertyOptional({ example: '+971501234568' })
-  @IsOptional()
+  @ValidateIf((o) => isProvided(o.alternatePhone))
   @IsString()
   @Matches(PHONE_REGEX, { message: 'alternatePhone must be a valid international phone number' })
   alternatePhone?: string;
 
   @ApiPropertyOptional({ example: 'tenant@example.com' })
-  @IsOptional()
+  @ValidateIf((o) => isProvided(o.email))
   @IsEmail()
   email?: string;
 
@@ -121,7 +121,7 @@ export class CreateTenantDto {
   authorizedPersonOccupation?: string;
 
   @ApiPropertyOptional({ example: '+971501234569' })
-  @IsOptional()
+  @ValidateIf((o) => isProvided(o.authorizedPersonPhone))
   @IsString()
   @Matches(PHONE_REGEX, {
     message: 'authorizedPersonPhone must be a valid international phone number',
