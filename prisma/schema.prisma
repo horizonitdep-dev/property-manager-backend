@@ -57,6 +57,29 @@ enum DocumentType {
   OTHER
 }
 
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  EXPIRING_SOON
+  EXPIRED
+  TERMINATED
+}
+
+enum PaymentFrequency {
+  MONTHLY
+  QUARTERLY
+  BI_ANNUAL
+  ANNUAL
+  SINGLE_PAYMENT
+  CHEQUES
+}
+
+enum ContractDocumentType {
+  SIGNED_CONTRACT
+  ADDENDUM
+  OTHER
+}
+
 model User {
   id               String    @id @default(uuid()) @db.Uuid
   email            String    @unique
@@ -74,9 +97,13 @@ model User {
   createdProperties Property[] @relation("PropertyCreatedBy")
   updatedProperties Property[] @relation("PropertyUpdatedBy")
 
-  createdTenants    Tenant[]          @relation("TenantCreatedBy")
-  updatedTenants    Tenant[]          @relation("TenantUpdatedBy")
-  uploadedDocuments TenantDocument[]  @relation("DocumentUploadedBy")
+  createdTenants    Tenant[]         @relation("TenantCreatedBy")
+  updatedTenants    Tenant[]         @relation("TenantUpdatedBy")
+  uploadedDocuments TenantDocument[] @relation("DocumentUploadedBy")
+
+  createdContracts          Contract[]         @relation("ContractCreatedBy")
+  updatedContracts          Contract[]         @relation("ContractUpdatedBy")
+  uploadedContractDocuments ContractDocument[] @relation("ContractDocUploadedBy")
 
   @@index([email])
   @@map("users")
@@ -135,6 +162,8 @@ model Property {
   createdBy User     @relation("PropertyCreatedBy", fields: [createdById], references: [id])
   updatedBy User?    @relation("PropertyUpdatedBy", fields: [updatedById], references: [id])
 
+  contracts Contract[]
+
   @@unique([buildingId, unitNumber])
   @@index([buildingId])
   @@index([unitNumber])
@@ -144,71 +173,139 @@ model Property {
 }
 
 model Tenant {
-  id                          String        @id @default(uuid()) @db.Uuid
-  tenantType                  TenantType    @map("tenant_type")
+  id         String     @id @default(uuid()) @db.Uuid
+  tenantType TenantType @map("tenant_type")
 
   // Dual-language name — holds person name OR company name depending on tenantType
-  nameEn                      String        @map("name_en")
-  nameAr                      String?       @map("name_ar")
+  nameEn String  @map("name_en")
+  nameAr String? @map("name_ar")
 
   // Contact (both types)
-  phone                       String
-  alternatePhone              String?       @map("alternate_phone")
-  email                       String?
+  phone          String
+  alternatePhone String? @map("alternate_phone")
+  email          String?
 
   // INDIVIDUAL-only
-  nationality                 String?
-  emiratesIdNumber            String?       @map("emirates_id_number")
-  emiratesIdExpiry            DateTime?     @map("emirates_id_expiry") @db.Date
-  passportNumber              String?       @map("passport_number")
-  passportExpiry              DateTime?     @map("passport_expiry") @db.Date
+  nationality      String?
+  emiratesIdNumber String?   @map("emirates_id_number")
+  emiratesIdExpiry DateTime? @map("emirates_id_expiry") @db.Date
+  passportNumber   String?   @map("passport_number")
+  passportExpiry   DateTime? @map("passport_expiry") @db.Date
 
   // COMPANY-only
-  tradeLicenseNumber          String?       @map("trade_license_number")
-  tradeLicenseExpiry          DateTime?     @map("trade_license_expiry") @db.Date
-  authorizedPersonNameEn      String?       @map("authorized_person_name_en")
-  authorizedPersonNameAr      String?       @map("authorized_person_name_ar")
-  authorizedPersonOccupation  String?       @map("authorized_person_occupation")
-  authorizedPersonPhone       String?       @map("authorized_person_phone")
+  tradeLicenseNumber         String?   @map("trade_license_number")
+  tradeLicenseExpiry         DateTime? @map("trade_license_expiry") @db.Date
+  authorizedPersonNameEn     String?   @map("authorized_person_name_en")
+  authorizedPersonNameAr     String?   @map("authorized_person_name_ar")
+  authorizedPersonOccupation String?   @map("authorized_person_occupation")
+  authorizedPersonPhone      String?   @map("authorized_person_phone")
 
-  status                      TenantStatus  @default(ACTIVE)
-  notes                       String?       @db.Text
+  status TenantStatus @default(ACTIVE)
+  notes  String?      @db.Text
 
-  createdAt                   DateTime      @default(now()) @map("created_at")
-  updatedAt                   DateTime      @updatedAt @map("updated_at")
-  deletedAt                   DateTime?     @map("deleted_at")
-  createdById                 String        @map("created_by") @db.Uuid
-  updatedById                 String?       @map("updated_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+  createdById String    @map("created_by") @db.Uuid
+  updatedById String?   @map("updated_by") @db.Uuid
 
-  documents                   TenantDocument[]
-  createdBy                   User          @relation("TenantCreatedBy", fields: [createdById], references: [id])
-  updatedBy                   User?         @relation("TenantUpdatedBy", fields: [updatedById], references: [id])
+  documents TenantDocument[]
+  contracts Contract[]
+  createdBy User             @relation("TenantCreatedBy", fields: [createdById], references: [id])
+  updatedBy User?            @relation("TenantUpdatedBy", fields: [updatedById], references: [id])
 
-  @@map("tenants")
   @@index([nameEn])
   @@index([nameAr])
   @@index([tenantType])
   @@index([status])
   @@index([deletedAt])
+  @@map("tenants")
 }
 
 model TenantDocument {
-  id            String        @id @default(uuid()) @db.Uuid
-  tenantId      String        @map("tenant_id") @db.Uuid
-  documentType  DocumentType  @map("document_type")
-  fileName      String        @map("file_name")
-  fileKey       String        @map("file_key")
-  fileSize      Int           @map("file_size")
-  mimeType      String        @map("mime_type")
-  uploadedAt    DateTime      @default(now()) @map("uploaded_at")
-  uploadedById  String        @map("uploaded_by") @db.Uuid
-  deletedAt     DateTime?     @map("deleted_at")
+  id           String       @id @default(uuid()) @db.Uuid
+  tenantId     String       @map("tenant_id") @db.Uuid
+  documentType DocumentType @map("document_type")
+  fileName     String       @map("file_name")
+  fileKey      String       @map("file_key")
+  fileSize     Int          @map("file_size")
+  mimeType     String       @map("mime_type")
+  uploadedAt   DateTime     @default(now()) @map("uploaded_at")
+  uploadedById String       @map("uploaded_by") @db.Uuid
+  deletedAt    DateTime?    @map("deleted_at")
 
-  tenant        Tenant        @relation(fields: [tenantId], references: [id])
-  uploadedBy    User          @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  uploadedBy User   @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
 
-  @@map("tenant_documents")
   @@index([tenantId])
   @@index([documentType])
   @@index([deletedAt])
+  @@map("tenant_documents")
+}
+
+model Contract {
+  id             String @id @default(uuid()) @db.Uuid
+  contractNumber String @map("contract_number")
+
+  tenantId   String @map("tenant_id") @db.Uuid
+  propertyId String @map("property_id") @db.Uuid
+
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+
+  annualRent  Decimal @map("annual_rent") @db.Decimal(12, 2)
+  monthlyRent Decimal @map("monthly_rent") @db.Decimal(12, 2)
+
+  paymentFrequency PaymentFrequency @map("payment_frequency")
+  numberOfCheques  Int?             @map("number_of_cheques")
+  securityDeposit  Decimal?         @map("security_deposit") @db.Decimal(12, 2)
+
+  // Stored status holds only manual states: DRAFT | ACTIVE | TERMINATED
+  status ContractStatus @default(DRAFT)
+
+  renewedFromId String? @map("renewed_from_id") @db.Uuid
+
+  notes String? @db.Text
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+  createdById String    @map("created_by") @db.Uuid
+  updatedById String?   @map("updated_by") @db.Uuid
+
+  tenant      Tenant             @relation(fields: [tenantId], references: [id])
+  property    Property           @relation(fields: [propertyId], references: [id])
+  renewedFrom Contract?          @relation("ContractRenewal", fields: [renewedFromId], references: [id])
+  renewals    Contract[]         @relation("ContractRenewal")
+  documents   ContractDocument[]
+  createdBy   User               @relation("ContractCreatedBy", fields: [createdById], references: [id])
+  updatedBy   User?              @relation("ContractUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([tenantId])
+  @@index([propertyId])
+  @@index([status])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([deletedAt])
+  @@map("contracts")
+}
+
+model ContractDocument {
+  id           String               @id @default(uuid()) @db.Uuid
+  contractId   String               @map("contract_id") @db.Uuid
+  documentType ContractDocumentType @map("document_type")
+  fileName     String               @map("file_name")
+  fileKey      String               @map("file_key")
+  fileSize     Int                  @map("file_size")
+  mimeType     String               @map("mime_type")
+  uploadedAt   DateTime             @default(now()) @map("uploaded_at")
+  uploadedById String               @map("uploaded_by") @db.Uuid
+  deletedAt    DateTime?            @map("deleted_at")
+
+  contract   Contract @relation(fields: [contractId], references: [id])
+  uploadedBy User     @relation("ContractDocUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([contractId])
+  @@index([deletedAt])
+  @@map("contract_documents")
 }

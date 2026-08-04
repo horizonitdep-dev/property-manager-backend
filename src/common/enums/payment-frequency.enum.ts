@@ -1,0 +1,8 @@
+export enum PaymentFrequency {
+  MONTHLY = 'MONTHLY',
+  QUARTERLY = 'QUARTERLY',
+  BI_ANNUAL = 'BI_ANNUAL',
+  ANNUAL = 'ANNUAL',
+  SINGLE_PAYMENT = 'SINGLE_PAYMENT',
+  CHEQUES = 'CHEQUES',
+}

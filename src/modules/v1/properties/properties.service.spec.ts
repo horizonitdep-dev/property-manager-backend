@@ -197,4 +197,47 @@ describe('PropertiesService', () => {
       await expect(service.remove('nonexistent', 'user-uuid')).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('setOccupancyStatus', () => {
+    it('should flip a VACANT property to OCCUPIED', async () => {
+      prisma.property.findFirst.mockResolvedValue({ ...mockProperty, status: PropertyStatus.VACANT });
+      prisma.property.update.mockResolvedValue({ ...mockProperty, status: PropertyStatus.OCCUPIED });
+
+      await service.setOccupancyStatus('property-uuid', PropertyStatus.OCCUPIED, 'user-uuid');
+
+      expect(prisma.property.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'property-uuid' },
+          data: expect.objectContaining({ status: PropertyStatus.OCCUPIED }),
+        }),
+      );
+    });
+
+    it('should NOT override a property manually set to UNDER_MAINTENANCE', async () => {
+      prisma.property.findFirst.mockResolvedValue({
+        ...mockProperty,
+        status: PropertyStatus.UNDER_MAINTENANCE,
+      });
+
+      await service.setOccupancyStatus('property-uuid', PropertyStatus.VACANT, 'user-uuid');
+
+      expect(prisma.property.update).not.toHaveBeenCalled();
+    });
+
+    it('should NOT override a property manually set to RESERVED', async () => {
+      prisma.property.findFirst.mockResolvedValue({ ...mockProperty, status: PropertyStatus.RESERVED });
+
+      await service.setOccupancyStatus('property-uuid', PropertyStatus.OCCUPIED, 'user-uuid');
+
+      expect(prisma.property.update).not.toHaveBeenCalled();
+    });
+
+    it('should be a no-op when the property is already in the desired status', async () => {
+      prisma.property.findFirst.mockResolvedValue({ ...mockProperty, status: PropertyStatus.OCCUPIED });
+
+      await service.setOccupancyStatus('property-uuid', PropertyStatus.OCCUPIED, 'user-uuid');
+
+      expect(prisma.property.update).not.toHaveBeenCalled();
+    });
+  });
 });

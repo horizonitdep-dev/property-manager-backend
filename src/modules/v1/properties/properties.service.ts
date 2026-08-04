@@ -5,6 +5,7 @@ import { CreatePropertyDto } from './dtos/create-property.dto';
 import { UpdatePropertyDto } from './dtos/update-property.dto';
 import { ListPropertiesQueryDto } from './dtos/list-properties.query.dto';
 import { PaginatedResult } from '../../../common/dtos/pagination.dto';
+import { PropertyStatus } from '../../../common/enums/property-status.enum';
 
 const buildingSummaryInclude = {
   building: { select: { id: true, name: true, code: true } },
@@ -165,6 +166,54 @@ export class PropertiesService {
     });
 
     return property;
+  }
+
+  /**
+   * Contracts-driven occupancy toggle (Contracts module, §7.3): auto-manages
+   * OCCUPIED/VACANT only. A property manually set to UNDER_MAINTENANCE or
+   * RESERVED is left untouched — logged and skipped, never overridden.
+   * Accepts an optional transaction client so ContractsService can wrap this
+   * in the same transaction as the contract write that triggered it.
+   */
+  async setOccupancyStatus(
+    propertyId: string,
+    desiredStatus: PropertyStatus.OCCUPIED | PropertyStatus.VACANT,
+    userId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<void> {
+    const property = await client.property.findFirst({ where: { id: propertyId, deletedAt: null } });
+    if (!property) {
+      return;
+    }
+
+    if (
+      property.status === PropertyStatus.UNDER_MAINTENANCE ||
+      property.status === PropertyStatus.RESERVED
+    ) {
+      this.logger.log('Skipped auto occupancy update — property in a manual state', {
+        propertyId,
+        currentStatus: property.status,
+        desiredStatus,
+        action: 'SKIP_AUTO_OCCUPANCY',
+      });
+      return;
+    }
+
+    if (property.status === desiredStatus) {
+      return;
+    }
+
+    await client.property.update({
+      where: { id: propertyId },
+      data: { status: desiredStatus, updatedById: userId },
+    });
+
+    this.logger.log('Property occupancy auto-updated', {
+      propertyId,
+      from: property.status,
+      to: desiredStatus,
+      action: 'AUTO_UPDATE_PROPERTY_OCCUPANCY',
+    });
   }
 
   private async ensureBuildingExists(buildingId: string) {

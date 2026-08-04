@@ -51,6 +51,7 @@ async function bootstrap() {
     .addTag('Buildings')
     .addTag('Properties')
     .addTag('Tenants')
+    .addTag('Contracts')
     .addTag('Health')
     .addServer('http://localhost:3000', 'Local development')
     .addServer('https://api.horizonpm.com', 'Production')
