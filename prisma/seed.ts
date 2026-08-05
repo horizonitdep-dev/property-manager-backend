@@ -63,41 +63,47 @@ async function main() {
     },
   });
 
-  const building1 = await prisma.building.upsert({
-    where: { code: 'B001' },
-    update: {},
-    create: {
-      name: 'Al Noor Tower',
-      code: 'B001',
-      address: 'Hamdan Street, Abu Dhabi',
-      city: 'Abu Dhabi',
-      buildingType: BuildingType.RESIDENTIAL,
-      totalFloors: 12,
-      yearBuilt: 2015,
-      totalUnits: 96,
-      constructionStatus: ConstructionStatus.COMPLETE,
-      notes: 'Main residential tower with underground parking',
-      createdById: manager.id,
-    },
-  });
+  // Building.code has no @unique (only a partial unique index scoped to non-deleted
+  // rows, so a soft-deleted building's code can be reused) — upsert() needs a
+  // Prisma-recognized unique field, so idempotency here is manual, same pattern as
+  // the tenant/contract dedup below: skip creation if a non-deleted match exists.
+  const existingBuilding1 = await prisma.building.findFirst({ where: { code: 'B001', deletedAt: null } });
+  const building1 =
+    existingBuilding1 ??
+    (await prisma.building.create({
+      data: {
+        name: 'Al Noor Tower',
+        code: 'B001',
+        address: 'Hamdan Street, Abu Dhabi',
+        city: 'Abu Dhabi',
+        buildingType: BuildingType.RESIDENTIAL,
+        totalFloors: 12,
+        yearBuilt: 2015,
+        totalUnits: 96,
+        constructionStatus: ConstructionStatus.COMPLETE,
+        notes: 'Main residential tower with underground parking',
+        createdById: manager.id,
+      },
+    }));
 
-  await prisma.building.upsert({
-    where: { code: 'B002' },
-    update: {},
-    create: {
-      name: 'Horizon Business Center',
-      code: 'B002',
-      address: 'Corniche Road, Abu Dhabi',
-      city: 'Abu Dhabi',
-      buildingType: BuildingType.COMMERCIAL,
-      totalFloors: 8,
-      yearBuilt: 2018,
-      totalUnits: 32,
-      constructionStatus: ConstructionStatus.UNDER_CONSTRUCTION,
-      notes: 'Commercial offices, floors 1-8',
-      createdById: manager.id,
-    },
-  });
+  const existingBuilding2 = await prisma.building.findFirst({ where: { code: 'B002', deletedAt: null } });
+  if (!existingBuilding2) {
+    await prisma.building.create({
+      data: {
+        name: 'Horizon Business Center',
+        code: 'B002',
+        address: 'Corniche Road, Abu Dhabi',
+        city: 'Abu Dhabi',
+        buildingType: BuildingType.COMMERCIAL,
+        totalFloors: 8,
+        yearBuilt: 2018,
+        totalUnits: 32,
+        constructionStatus: ConstructionStatus.UNDER_CONSTRUCTION,
+        notes: 'Commercial offices, floors 1-8',
+        createdById: manager.id,
+      },
+    });
+  }
 
   const properties = [
     {
@@ -154,17 +160,22 @@ async function main() {
     },
   ];
 
-  const propertiesByUnit: Record<string, Awaited<ReturnType<typeof prisma.property.upsert>>> = {};
+  // Same reasoning as Building.code above: (buildingId, unitNumber) is only
+  // partially unique (non-deleted rows), so upsert() doesn't apply here either.
+  const propertiesByUnit: Record<string, Awaited<ReturnType<typeof prisma.property.create>>> = {};
   for (const property of properties) {
-    propertiesByUnit[property.unitNumber] = await prisma.property.upsert({
-      where: { buildingId_unitNumber: { buildingId: building1.id, unitNumber: property.unitNumber } },
-      update: {},
-      create: {
-        ...property,
-        buildingId: building1.id,
-        createdById: manager.id,
-      },
+    const existing = await prisma.property.findFirst({
+      where: { buildingId: building1.id, unitNumber: property.unitNumber, deletedAt: null },
     });
+    propertiesByUnit[property.unitNumber] =
+      existing ??
+      (await prisma.property.create({
+        data: {
+          ...property,
+          buildingId: building1.id,
+          createdById: manager.id,
+        },
+      }));
   }
 
   const tenants = [

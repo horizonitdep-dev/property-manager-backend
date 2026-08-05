@@ -17,5 +17,6 @@ import { ContractDocumentsService } from './contract-documents.service';
     ContractDocumentsController,
   ],
   providers: [ContractsService, ContractDocumentsService],
+  exports: [ContractsService],
 })
 export class ContractsModule {}

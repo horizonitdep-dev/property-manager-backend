@@ -31,7 +31,6 @@ describe('BuildingsService', () => {
     building: {
       findMany: jest.Mock;
       findFirst: jest.Mock;
-      findUnique: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
       count: jest.Mock;
@@ -43,7 +42,6 @@ describe('BuildingsService', () => {
       building: {
         findMany: jest.fn(),
         findFirst: jest.fn(),
-        findUnique: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
         count: jest.fn(),
@@ -102,7 +100,7 @@ describe('BuildingsService', () => {
 
   describe('create', () => {
     it('should throw ConflictException on duplicate code', async () => {
-      prisma.building.findUnique.mockResolvedValue(mockBuilding);
+      prisma.building.findFirst.mockResolvedValue(mockBuilding);
       await expect(
         service.create(
           {
@@ -119,7 +117,7 @@ describe('BuildingsService', () => {
     });
 
     it('should create building successfully', async () => {
-      prisma.building.findUnique.mockResolvedValue(null);
+      prisma.building.findFirst.mockResolvedValue(null);
       prisma.building.create.mockResolvedValue(mockBuilding);
 
       const result = await service.create(
@@ -138,7 +136,7 @@ describe('BuildingsService', () => {
     });
 
     it('should pass totalUnits and constructionStatus through to create', async () => {
-      prisma.building.findUnique.mockResolvedValue(null);
+      prisma.building.findFirst.mockResolvedValue(null);
       prisma.building.create.mockResolvedValue(mockBuilding);
 
       await service.create(

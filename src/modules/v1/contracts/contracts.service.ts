@@ -121,7 +121,15 @@ export class ContractsService {
     return this.findAll({ ...query, tenantId });
   }
 
-  async create(dto: CreateContractDto, userId: string) {
+  /**
+   * Accepts an optional transaction client so callers already inside their own
+   * transaction (the import commit path, which must insert many contracts
+   * atomically) can pass it straight through — this method skips opening its
+   * own $transaction() in that case, since a nested $transaction() would just
+   * run as an independent, separately-committing transaction and break the
+   * caller's atomicity.
+   */
+  async create(dto: CreateContractDto, userId: string, client?: Prisma.TransactionClient) {
     await this.tenantsService.ensureTenantExists(dto.tenantId);
     await this.propertiesService.findOne(dto.propertyId);
 
@@ -138,7 +146,7 @@ export class ContractsService {
 
     const status = dto.status ?? ContractStatus.DRAFT;
 
-    return this.prisma.$transaction(async (tx) => {
+    const run = async (tx: Prisma.TransactionClient) => {
       if (status === ContractStatus.ACTIVE) {
         await this.assertNoOverlap(tx, dto.propertyId, startDate, endDate);
       }
@@ -167,7 +175,9 @@ export class ContractsService {
       });
 
       return this.toResponse(contract);
-    });
+    };
+
+    return client ? run(client) : this.prisma.$transaction(run);
   }
 
   async update(id: string, dto: UpdateContractDto, userId: string) {

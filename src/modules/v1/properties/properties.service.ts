@@ -85,10 +85,14 @@ export class PropertiesService {
     return this.findAll({ ...query, buildingId });
   }
 
-  async create(dto: CreatePropertyDto, userId: string) {
-    await this.ensureBuildingExists(dto.buildingId);
+  async create(
+    dto: CreatePropertyDto,
+    userId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    await this.ensureBuildingExists(dto.buildingId, client);
 
-    const existing = await this.prisma.property.findFirst({
+    const existing = await client.property.findFirst({
       where: { buildingId: dto.buildingId, unitNumber: dto.unitNumber, deletedAt: null },
     });
 
@@ -96,7 +100,7 @@ export class PropertiesService {
       throw new ConflictException(`Unit '${dto.unitNumber}' already exists in this building`);
     }
 
-    const property = await this.prisma.property.create({
+    const property = await client.property.create({
       data: {
         ...dto,
         createdById: userId,
@@ -216,8 +220,11 @@ export class PropertiesService {
     });
   }
 
-  private async ensureBuildingExists(buildingId: string) {
-    const building = await this.prisma.building.findFirst({
+  private async ensureBuildingExists(
+    buildingId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const building = await client.building.findFirst({
       where: { id: buildingId, deletedAt: null },
     });
 

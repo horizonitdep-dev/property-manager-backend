@@ -1,0 +1,6 @@
+export enum ImportStatus {
+  PENDING_REVIEW = 'PENDING_REVIEW',
+  COMMITTED = 'COMMITTED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+}

@@ -80,6 +80,20 @@ enum ContractDocumentType {
   OTHER
 }
 
+enum ImportModule {
+  BUILDINGS
+  PROPERTIES
+  TENANTS
+  CONTRACTS
+}
+
+enum ImportStatus {
+  PENDING_REVIEW
+  COMMITTED
+  FAILED
+  CANCELLED
+}
+
 model User {
   id               String    @id @default(uuid()) @db.Uuid
   email            String    @unique
@@ -105,6 +119,8 @@ model User {
   updatedContracts          Contract[]         @relation("ContractUpdatedBy")
   uploadedContractDocuments ContractDocument[] @relation("ContractDocUploadedBy")
 
+  importSessions ImportSession[] @relation("ImportCreatedBy")
+
   @@index([email])
   @@map("users")
 }
@@ -112,7 +128,11 @@ model User {
 model Building {
   id                 String             @id @default(uuid()) @db.Uuid
   name               String
-  code               String             @unique
+  // Uniqueness among non-deleted rows only is enforced by a partial unique
+  // index (see migration), not by @unique — Postgres unique indexes can't
+  // exclude soft-deleted rows on their own, and a soft-deleted building's
+  // code must be reusable.
+  code               String
   address            String
   city               String
   buildingType       BuildingType       @map("building_type")
@@ -164,7 +184,10 @@ model Property {
 
   contracts Contract[]
 
-  @@unique([buildingId, unitNumber])
+  // Uniqueness of (buildingId, unitNumber) among non-deleted rows only is
+  // enforced by a partial unique index (see migration) — same reasoning as
+  // Building.code above.
+  @@index([buildingId, unitNumber])
   @@index([buildingId])
   @@index([unitNumber])
   @@index([status])
@@ -308,4 +331,26 @@ model ContractDocument {
   @@index([contractId])
   @@index([deletedAt])
   @@map("contract_documents")
+}
+
+model ImportSession {
+  id           String       @id @default(uuid()) @db.Uuid
+  module       ImportModule
+  status       ImportStatus @default(PENDING_REVIEW)
+  originalName String       @map("original_name")
+  totalRows    Int          @map("total_rows")
+  validRows    Int          @map("valid_rows")
+  errorRows    Int          @map("error_rows")
+  rowsData     Json         @map("rows_data")
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  committedAt DateTime? @map("committed_at")
+  createdById String    @map("created_by") @db.Uuid
+
+  createdBy User @relation("ImportCreatedBy", fields: [createdById], references: [id])
+
+  @@index([module])
+  @@index([status])
+  @@index([createdById])
+  @@map("import_sessions")
 }

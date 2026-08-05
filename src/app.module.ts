@@ -13,6 +13,7 @@ import { BuildingsModule } from './modules/v1/buildings/buildings.module';
 import { PropertiesModule } from './modules/v1/properties/properties.module';
 import { TenantsModule } from './modules/v1/tenants/tenants.module';
 import { ContractsModule } from './modules/v1/contracts/contracts.module';
+import { ImportFeatureModule } from './modules/v1/import/import.module';
 import { HealthModule } from './health/health.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -39,6 +40,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     PropertiesModule,
     TenantsModule,
     ContractsModule,
+    ImportFeatureModule,
     HealthModule,
   ],
   providers: [

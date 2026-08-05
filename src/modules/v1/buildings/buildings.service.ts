@@ -78,16 +78,20 @@ export class BuildingsService {
     return this.withComputedTotalUnits(building);
   }
 
-  async create(dto: CreateBuildingDto, userId: string) {
-    const existing = await this.prisma.building.findUnique({
-      where: { code: dto.code },
+  async create(
+    dto: CreateBuildingDto,
+    userId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const existing = await client.building.findFirst({
+      where: { code: dto.code, deletedAt: null },
     });
 
     if (existing) {
       throw new ConflictException(`Building code '${dto.code}' already exists`);
     }
 
-    const building = await this.prisma.building.create({
+    const building = await client.building.create({
       data: {
         ...dto,
         createdById: userId,
@@ -111,7 +115,7 @@ export class BuildingsService {
 
     if (dto.code) {
       const duplicate = await this.prisma.building.findFirst({
-        where: { code: dto.code, NOT: { id } },
+        where: { code: dto.code, deletedAt: null, NOT: { id } },
       });
       if (duplicate) {
         throw new ConflictException(`Building code '${dto.code}' already exists`);

@@ -85,7 +85,11 @@ export class TenantsService {
     return tenant;
   }
 
-  async create(dto: CreateTenantDto, userId: string) {
+  async create(
+    dto: CreateTenantDto,
+    userId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
     // Belt-and-braces: the DTO-level @RequiredForTenantType constraint already
     // enforces this over HTTP, but the service shouldn't rely on callers
     // always going through the ValidationPipe (see §6 — do not rely on the
@@ -97,9 +101,10 @@ export class TenantsService {
       );
     }
 
-    const tenant = await this.prisma.tenant.create({
+    const tenant = await client.tenant.create({
       data: {
         ...dto,
+        ...this.toDateFields(dto),
         createdById: userId,
       },
       include: documentsInclude,
@@ -128,7 +133,7 @@ export class TenantsService {
 
     const tenant = await this.prisma.tenant.update({
       where: { id },
-      data: { ...dto, updatedById: userId },
+      data: { ...dto, ...this.toDateFields(dto), updatedById: userId },
       include: documentsInclude,
     });
 
@@ -157,6 +162,20 @@ export class TenantsService {
     });
 
     return tenant;
+  }
+
+  /**
+   * The date fields are validated as ISO strings (@IsDateString) but Prisma's DateTime
+   * columns reject a bare date-only string ("premature end of input" — it needs a full
+   * ISO datetime or a real Date object), so these must be converted before every write.
+   * Mirrors the same conversion ContractsService already does for startDate/endDate.
+   */
+  private toDateFields(dto: { emiratesIdExpiry?: string; passportExpiry?: string; tradeLicenseExpiry?: string }) {
+    return {
+      ...(dto.emiratesIdExpiry && { emiratesIdExpiry: new Date(dto.emiratesIdExpiry) }),
+      ...(dto.passportExpiry && { passportExpiry: new Date(dto.passportExpiry) }),
+      ...(dto.tradeLicenseExpiry && { tradeLicenseExpiry: new Date(dto.tradeLicenseExpiry) }),
+    };
   }
 
   /** Used by TenantDocumentsService to confirm a tenant exists and isn't soft-deleted. */

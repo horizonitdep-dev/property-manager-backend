@@ -1,0 +1,6 @@
+export enum ImportModule {
+  BUILDINGS = 'BUILDINGS',
+  PROPERTIES = 'PROPERTIES',
+  TENANTS = 'TENANTS',
+  CONTRACTS = 'CONTRACTS',
+}
