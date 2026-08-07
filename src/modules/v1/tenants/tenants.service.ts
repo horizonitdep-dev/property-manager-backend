@@ -5,7 +5,7 @@ import { CreateTenantDto } from './dtos/create-tenant.dto';
 import { UpdateTenantDto } from './dtos/update-tenant.dto';
 import { ListTenantsQueryDto } from './dtos/list-tenants.query.dto';
 import { PaginatedResult } from '../../../common/dtos/pagination.dto';
-import { getMissingTenantTypeFields } from './validators/tenant-type-fields.validator';
+import { getMissingTenantTypeFields, isTenantProfileIncomplete } from './validators/tenant-type-fields.validator';
 
 const documentCountInclude = {
   _count: { select: { documents: { where: { deletedAt: null } } } },
@@ -82,19 +82,28 @@ export class TenantsService {
       throw new NotFoundException('Tenant not found');
     }
 
-    return tenant;
+    return { ...tenant, profileIncomplete: isTenantProfileIncomplete(tenant) };
   }
 
   async create(
     dto: CreateTenantDto,
     userId: string,
     client: Prisma.TransactionClient | PrismaService = this.prisma,
+    /**
+     * Field names to exclude from the required-fields check below. Empty by default,
+     * so normal callers (the controller) get the exact same enforcement as always.
+     * Only TenantsImporter passes IMPORT_OPTIONAL_COMPANY_FIELDS here, for the
+     * import path's relaxed COMPANY validation — see that constant's own comment.
+     */
+    exemptFromRequiredCheck: readonly string[] = [],
   ) {
     // Belt-and-braces: the DTO-level @RequiredForTenantType constraint already
     // enforces this over HTTP, but the service shouldn't rely on callers
     // always going through the ValidationPipe (see §6 — do not rely on the
     // DB alone, and don't rely solely on the DTO layer either).
-    const missing = getMissingTenantTypeFields(dto);
+    const missing = getMissingTenantTypeFields(dto).filter(
+      (field) => !exemptFromRequiredCheck.includes(field),
+    );
     if (missing.length > 0) {
       throw new BadRequestException(
         missing.map((field) => `${field} is required when tenantType is ${dto.tenantType}`),
@@ -117,7 +126,7 @@ export class TenantsService {
       action: 'CREATE_TENANT',
     });
 
-    return tenant;
+    return { ...tenant, profileIncomplete: isTenantProfileIncomplete(tenant) };
   }
 
   async update(id: string, dto: UpdateTenantDto, userId: string) {
@@ -143,7 +152,7 @@ export class TenantsService {
       action: 'UPDATE_TENANT',
     });
 
-    return tenant;
+    return { ...tenant, profileIncomplete: isTenantProfileIncomplete(tenant) };
   }
 
   async remove(id: string, userId: string) {
@@ -161,7 +170,7 @@ export class TenantsService {
       action: 'DELETE_TENANT',
     });
 
-    return tenant;
+    return { ...tenant, profileIncomplete: isTenantProfileIncomplete(tenant) };
   }
 
   /**
@@ -214,6 +223,7 @@ export class TenantsService {
       status: tenant.status,
       documentCount: tenant._count?.documents ?? 0,
       createdAt: tenant.createdAt,
+      profileIncomplete: isTenantProfileIncomplete(tenant as unknown as { tenantType?: string | null }),
     };
   }
 }

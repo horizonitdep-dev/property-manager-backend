@@ -10,7 +10,10 @@ import { ParsedRow, getCell } from '../file-parser.service';
 import { RowResult } from '../../row-result';
 import { ModuleImporter } from './importer.interface';
 import { ImportCommitRowError } from '../../import-commit-row.error';
-import { getMissingTenantTypeFields } from '../../../tenants/validators/tenant-type-fields.validator';
+import {
+  getMissingTenantTypeFields,
+  IMPORT_OPTIONAL_COMPANY_FIELDS,
+} from '../../../tenants/validators/tenant-type-fields.validator';
 import {
   buildRowResult,
   mapDateCell,
@@ -27,6 +30,13 @@ const TENANT_TYPE_LABELS: Record<string, TenantType> = {
 const TENANT_STATUS_LABELS: Record<string, TenantStatus> = {
   active: TenantStatus.ACTIVE,
   former: TenantStatus.FORMER,
+};
+
+/** Human labels for IMPORT_OPTIONAL_COMPANY_FIELDS, for the row warning message. */
+const RELAXED_FIELD_LABELS: Record<string, string> = {
+  tradeLicenseExpiry: 'Trade License Expiry',
+  authorizedPersonNameEn: 'Authorized Person (English)',
+  authorizedPersonOccupation: 'Authorized Person Occupation',
 };
 
 @Injectable()
@@ -87,11 +97,40 @@ export class TenantsImporter implements ModuleImporter {
       // is the same shared checker TenantsService.create()/.update() rely on as their real
       // enforcement; call it directly here too rather than trust the DTO path alone.
       const missing = getMissingTenantTypeFields(coerced as unknown as { tenantType?: string | null });
-      for (const field of missing) {
+
+      // Import-only relaxation: a COMPANY missing trade licence expiry / authorized
+      // person details doesn't block the row — it's a warning, and the tenant commits
+      // flagged profileIncomplete (see IMPORT_OPTIONAL_COMPANY_FIELDS). Everything else
+      // missing is still a hard error, same as the normal create/update path.
+      const relaxedMissing = missing.filter((field) =>
+        (IMPORT_OPTIONAL_COMPANY_FIELDS as readonly string[]).includes(field),
+      );
+      const hardMissing = missing.filter(
+        (field) => !(IMPORT_OPTIONAL_COMPANY_FIELDS as readonly string[]).includes(field),
+      );
+
+      for (const field of hardMissing) {
         errors.push({ field, message: `${field} is required when tenantType is ${tenantType}` });
       }
 
-      results.push(buildRowResult(row.rowNumber, coerced as unknown as Record<string, unknown>, errors));
+      const warnings: { field: string; message: string }[] = [];
+      if (relaxedMissing.length > 0) {
+        const labels = relaxedMissing.map((field) => RELAXED_FIELD_LABELS[field]).join(', ');
+        warnings.push({
+          field: 'Company Profile',
+          message: `Will import — missing: ${labels}. Complete later.`,
+        });
+      }
+
+      results.push(
+        buildRowResult(
+          row.rowNumber,
+          coerced as unknown as Record<string, unknown>,
+          errors,
+          undefined,
+          warnings,
+        ),
+      );
     }
 
     return results;
@@ -107,6 +146,7 @@ export class TenantsImporter implements ModuleImporter {
             row.data as unknown as CreateTenantDto,
             userId,
             tx as Prisma.TransactionClient,
+            IMPORT_OPTIONAL_COMPANY_FIELDS,
           );
           inserted++;
         } catch (error) {

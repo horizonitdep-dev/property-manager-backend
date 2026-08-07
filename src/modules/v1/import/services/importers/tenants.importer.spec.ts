@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TenantsImporter } from './tenants.importer';
 import { PrismaService } from '../../../../../database/prisma.service';
 import { TenantsService } from '../../../tenants/tenants.service';
+import { IMPORT_OPTIONAL_COMPANY_FIELDS } from '../../../tenants/validators/tenant-type-fields.validator';
 import { ParsedRow } from '../file-parser.service';
 
 function row(rowNumber: number, values: Record<string, string | null>): ParsedRow {
@@ -101,7 +102,7 @@ describe('TenantsImporter', () => {
     );
   });
 
-  it('flags a Company missing trade license fields', async () => {
+  it('flags a Company missing trade license number (not import-relaxable) as an error', async () => {
     const values = validCompanyValues();
     values['trade license number'] = null;
     values['trade license expiry'] = null;
@@ -111,15 +112,43 @@ describe('TenantsImporter', () => {
     const [result] = await importer.validateRows([row(2, values)]);
 
     expect(result.status).toBe('ERROR');
-    const fields = result.errors.map((e) => e.field);
-    expect(fields).toEqual(
-      expect.arrayContaining([
-        'tradeLicenseNumber',
-        'tradeLicenseExpiry',
-        'authorizedPersonNameEn',
-        'authorizedPersonOccupation',
-      ]),
-    );
+    expect(result.errors.map((e) => e.field)).toEqual(['tradeLicenseNumber']);
+  });
+
+  it('treats a Company missing trade license expiry / authorized person details as VALID with a warning', async () => {
+    const values = validCompanyValues();
+    values['trade license expiry'] = null;
+    values['authorized person (english)'] = null;
+    values['authorized person occupation'] = null;
+
+    const [result] = await importer.validateRows([row(2, values)]);
+
+    expect(result.status).toBe('VALID');
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings?.[0].message).toContain('Trade License Expiry');
+    expect(result.warnings?.[0].message).toContain('Authorized Person (English)');
+    expect(result.warnings?.[0].message).toContain('Authorized Person Occupation');
+  });
+
+  it('does not warn on a fully complete Company row', async () => {
+    const [result] = await importer.validateRows([row(2, validCompanyValues())]);
+
+    expect(result.status).toBe('VALID');
+    expect(result.warnings).toBeUndefined();
+  });
+
+  it('never relaxes Individual-required fields, even though they overlap no Company field names', async () => {
+    const values = validIndividualValues();
+    values['emirates id number'] = null;
+    values['emirates id expiry'] = null;
+    values['passport number'] = null;
+    values['passport expiry'] = null;
+
+    const [result] = await importer.validateRows([row(2, values)]);
+
+    expect(result.status).toBe('ERROR');
+    expect(result.warnings).toBeUndefined();
   });
 
   it('accepts DD/MM/YYYY and normalizes it to ISO', async () => {
@@ -160,7 +189,12 @@ describe('TenantsImporter', () => {
       );
 
       expect(inserted).toBe(1);
-      expect(tenantsService.create).toHaveBeenCalledWith({ nameEn: 'Ahmed' }, 'user-1', prisma);
+      expect(tenantsService.create).toHaveBeenCalledWith(
+        { nameEn: 'Ahmed' },
+        'user-1',
+        prisma,
+        IMPORT_OPTIONAL_COMPANY_FIELDS,
+      );
     });
   });
 });

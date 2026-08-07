@@ -94,6 +94,12 @@ export class TenantResponseDto {
   @ApiProperty({ type: [TenantDocumentSummaryDto] })
   documents!: TenantDocumentSummaryDto[];
 
+  @ApiProperty({
+    description:
+      'True for a COMPANY tenant imported without trade licence expiry / authorized person details — complete these fields via PATCH.',
+  })
+  profileIncomplete!: boolean;
+
   @ApiProperty()
   createdById!: string;
 

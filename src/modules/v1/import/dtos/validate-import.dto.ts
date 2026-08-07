@@ -20,6 +20,12 @@ export class ImportRowResultDto {
   @ApiProperty({ type: [ImportRowErrorDto] })
   errors!: ImportRowErrorDto[];
 
+  @ApiPropertyOptional({
+    type: [ImportRowErrorDto],
+    description: 'Non-blocking — the row still commits (e.g. a COMPANY tenant missing optional-on-import fields).',
+  })
+  warnings?: ImportRowErrorDto[];
+
   @ApiPropertyOptional()
   data?: Record<string, unknown>;
 }

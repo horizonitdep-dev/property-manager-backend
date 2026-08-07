@@ -154,6 +154,7 @@ export function buildRowResult(
   data: Record<string, unknown>,
   errors: FieldErrors,
   resolvedRefs?: Record<string, string>,
+  warnings?: FieldErrors,
 ): RowResult {
   return {
     rowNumber,
@@ -161,6 +162,7 @@ export function buildRowResult(
     status: errors.length > 0 ? 'ERROR' : 'VALID',
     errors,
     ...(resolvedRefs ? { resolvedRefs } : {}),
+    ...(warnings && warnings.length > 0 ? { warnings } : {}),
   };
 }
 

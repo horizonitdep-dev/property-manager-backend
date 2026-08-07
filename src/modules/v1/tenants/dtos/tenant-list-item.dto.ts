@@ -34,4 +34,10 @@ export class TenantListItemDto {
 
   @ApiProperty()
   createdAt!: Date;
+
+  @ApiProperty({
+    description:
+      'True for a COMPANY tenant imported without trade licence expiry / authorized person details.',
+  })
+  profileIncomplete!: boolean;
 }
