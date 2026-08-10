@@ -1,0 +1,3 @@
+Building Name,Building Code,Address,City,Building Type,Total Floors,Total Units,Construction Status,Notes
+Rollback Test Tower One,RB-1,1 Rollback Street,Abu Dhabi,Residential,5,,Complete,First row should insert then roll back
+Rollback Test Tower Two,RB-2,2 Rollback Street,Abu Dhabi,Residential,5,,Complete,This code will collide with a race condition

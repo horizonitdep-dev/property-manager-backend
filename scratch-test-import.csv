@@ -1,0 +1,6 @@
+Building Name,Building Code,Address,City,Building Type,Total Floors,Total Units,Construction Status,Notes
+Test Import Tower A,IMP-A,1 Test Street,Abu Dhabi,Residential,5,20,Complete,Valid row
+,IMP-B,2 Test Street,Abu Dhabi,Residential,5,,Complete,Missing name should error
+Test Import Tower C,IMP-A,3 Test Street,Abu Dhabi,Commercial,3,,Complete,Duplicate code in file
+Test Import Tower D,IMP-D,4 Test Street,Abu Dhabi,Bungalow,3,,Complete,Bad enum value
+Test Import Tower E,B001,5 Test Street,Abu Dhabi,Residential,3,,Complete,Duplicate of existing DB code
