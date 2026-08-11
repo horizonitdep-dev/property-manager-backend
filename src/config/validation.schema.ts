@@ -22,4 +22,8 @@ export const validationSchema = Joi.object({
   // STORAGE_ACCESS_KEY_ID: Joi.string().required(),
   // STORAGE_SECRET_ACCESS_KEY: Joi.string().required(),
   // STORAGE_REGION: Joi.string().required(),
+  // Optional (not required) so the app can boot before the key is configured —
+  // PdfExtractionService throws a clear error only when actually invoked without one.
+  ANTHROPIC_API_KEY: Joi.string().allow('').optional(),
+  ANTHROPIC_MODEL: Joi.string().default('claude-sonnet-5'),
 });
