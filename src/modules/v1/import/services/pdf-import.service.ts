@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
   Logger,
   NotFoundException,
@@ -17,7 +18,7 @@ import { CreateBuildingDto } from '../../buildings/dtos/create-building.dto';
 import { CreatePropertyDto } from '../../properties/dtos/create-property.dto';
 import { CreateTenantDto } from '../../tenants/dtos/create-tenant.dto';
 import { CreateContractDto } from '../../contracts/dtos/create-contract.dto';
-import { IMPORT_OPTIONAL_COMPANY_FIELDS } from '../../tenants/validators/tenant-type-fields.validator';
+import { exemptFieldsForTenantType } from '../pdf-tenant-import-fields';
 import { ImportModule } from '../../../../common/enums/import-module.enum';
 import { ImportStatus } from '../../../../common/enums/import-status.enum';
 import { ContractDocumentType } from '../../../../common/enums/contract-document-type.enum';
@@ -26,6 +27,27 @@ import { ImportCommitRowError } from '../import-commit-row.error';
 import { PdfExtractionService } from './pdf-extraction.service';
 import { PdfResolutionService } from './pdf-resolution.service';
 import { PdfExtractionError } from '../pdf-extraction.error';
+
+/**
+ * Nest's HttpException.initMessage() only copies `.message` across when the
+ * exception payload is a string. Services that throw the validation-style
+ * `BadRequestException(['field a is required', 'field b is required'])` therefore
+ * end up with `.message` === 'Bad Request Exception' (derived from the class
+ * name) and the real reasons buried in getResponse(). Reading `.message` alone
+ * turns an actionable row failure into a useless one, so unwrap the payload.
+ */
+function describeCommitError(error: unknown): string {
+  if (error instanceof HttpException) {
+    const response = error.getResponse() as unknown;
+    if (typeof response === 'string') return response;
+    if (response && typeof response === 'object') {
+      const { message } = response as { message?: unknown };
+      if (Array.isArray(message)) return message.join('; ');
+      if (typeof message === 'string') return message;
+    }
+  }
+  return (error as Error).message;
+}
 
 export const MAX_PDF_FILES_PER_BATCH = 10;
 export const MAX_PDF_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -338,7 +360,7 @@ export class PdfImportService {
             );
             buildingIdByIndex.set(i, created.id);
           } catch (error) {
-            throw new ImportCommitRowError(row.rowNumber, `[building] ${(error as Error).message}`);
+            throw new ImportCommitRowError(row.rowNumber, `[building] ${describeCommitError(error)}`);
           }
         }
 
@@ -354,7 +376,7 @@ export class PdfImportService {
               'building',
             );
           } catch (error) {
-            throw new ImportCommitRowError(row.rowNumber, `[property] ${(error as Error).message}`);
+            throw new ImportCommitRowError(row.rowNumber, `[property] ${describeCommitError(error)}`);
           }
 
           try {
@@ -365,7 +387,7 @@ export class PdfImportService {
             );
             propertyIdByIndex.set(i, created.id);
           } catch (error) {
-            throw new ImportCommitRowError(row.rowNumber, `[property] ${(error as Error).message}`);
+            throw new ImportCommitRowError(row.rowNumber, `[property] ${describeCommitError(error)}`);
           }
         }
 
@@ -377,11 +399,13 @@ export class PdfImportService {
               row.data as unknown as CreateTenantDto,
               userId,
               client,
-              IMPORT_OPTIONAL_COMPANY_FIELDS,
+              // Per tenant type: a DMT contract carries neither an individual's
+              // ID expiry dates nor a company's licence expiry/authorized person.
+              exemptFieldsForTenantType((row.data as Record<string, unknown>).tenantType),
             );
             tenantIdByIndex.set(i, created.id);
           } catch (error) {
-            throw new ImportCommitRowError(row.rowNumber, `[tenant] ${(error as Error).message}`);
+            throw new ImportCommitRowError(row.rowNumber, `[tenant] ${describeCommitError(error)}`);
           }
         }
       });
@@ -410,7 +434,7 @@ export class PdfImportService {
         tenantId = resolvePendingRef(row.resolvedRefs?.tenantId ?? '', tenantIdByIndex, 'tenant');
         propertyId = resolvePendingRef(row.resolvedRefs?.propertyId ?? '', propertyIdByIndex, 'property');
       } catch (error) {
-        contractFailures.push({ rowNumber: row.rowNumber, reason: (error as Error).message });
+        contractFailures.push({ rowNumber: row.rowNumber, reason: describeCommitError(error) });
         continue;
       }
 
@@ -441,7 +465,7 @@ export class PdfImportService {
           }
         }
       } catch (error) {
-        contractFailures.push({ rowNumber: row.rowNumber, reason: (error as Error).message });
+        contractFailures.push({ rowNumber: row.rowNumber, reason: describeCommitError(error) });
       }
     }
 

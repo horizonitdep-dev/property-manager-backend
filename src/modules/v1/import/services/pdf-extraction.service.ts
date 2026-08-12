@@ -47,6 +47,9 @@ const EXTRACTION_PROMPT = `You are extracting structured data from a DMT (Abu Dh
     "individualNameEn": "string or null",
     "individualNameAr": "string or null",
     "tradeLicenseNumber": "string or null",
+    "emiratesIdNumber": "string or null",
+    "passportNumber": "string or null",
+    "nationality": "string or null",
     "mobile": "string or null",
     "email": "string or null"
   },
@@ -73,7 +76,8 @@ Rules:
 - Every key above must be present. Use null (not an empty string, not a guess) for anything not present on the document.
 - Dates: normalize startDate, endDate, and issueDate to ISO format YYYY-MM-DD.
 - Preserve Arabic text verbatim (do not transliterate) in every *Ar field.
-- Never invent trade licence expiry, authorized person details, or occupation — these are commonly absent from DMT PDFs and must be left null, not guessed.
+- For an individual tenant, extract emiratesIdNumber from the Tenant Details section — it is usually labelled "Emirates ID" / "EID" / "ID No." / Arabic "رقم الهوية", and is typically formatted 784-YYYY-NNNNNNN-N. Residential contracts normally carry it; commercial ones often do not. Extract passportNumber and nationality the same way when shown. Use null when a field is genuinely absent — never reuse the trade licence, contract, or unit registration number as an Emirates ID.
+- Never invent trade licence expiry, authorized person details, occupation, or any Emirates ID / passport EXPIRY date — these are commonly absent from DMT PDFs and must be left null, not guessed.
 - Report paymentMethod and numberOfPayments exactly as written on the document — do not map them to an internal enum yourself, that happens downstream.
 - The Lessor/landlord section is informational only — do not put lessor details in the tenant object.`;
 
@@ -371,8 +375,18 @@ export class PdfExtractionService {
 
   private normalizeTenant(extracted: ExtractedContractDto): NormalizedTenantCandidate {
     const flags: ExtractionFlag[] = [];
-    const { companyNameEn, companyNameAr, individualNameEn, individualNameAr, mobile, email, tradeLicenseNumber } =
-      extracted.tenant;
+    const {
+      companyNameEn,
+      companyNameAr,
+      individualNameEn,
+      individualNameAr,
+      mobile,
+      email,
+      tradeLicenseNumber,
+      emiratesIdNumber,
+      passportNumber,
+      nationality,
+    } = extracted.tenant;
 
     const isCompany = Boolean(companyNameEn?.trim());
     const nameEn = (isCompany ? companyNameEn : individualNameEn)?.trim() ?? '';
@@ -393,6 +407,25 @@ export class PdfExtractionService {
       });
     }
 
+    if (!isCompany) {
+      if (emiratesIdNumber?.trim()) {
+        flags.push({ field: 'emiratesIdNumber', status: 'ok' });
+      } else {
+        flags.push({
+          field: 'emiratesIdNumber',
+          status: 'missing',
+          note:
+            'No Emirates ID printed on this contract (common on commercial lets) — the tenant imports without one and should be completed later',
+        });
+      }
+      flags.push({
+        field: 'individualProfile',
+        status: 'missing',
+        note:
+          'Emirates ID expiry and passport expiry are never printed on DMT contracts and are left blank — imports flag the tenant rather than blocking the row',
+      });
+    }
+
     return {
       tenantType: isCompany ? 'Company' : 'Individual',
       nameEn,
@@ -400,6 +433,9 @@ export class PdfExtractionService {
       phone: mobile?.trim() || undefined,
       email: email?.trim() || undefined,
       tradeLicenseNumber: isCompany ? tradeLicenseNumber?.trim() || undefined : undefined,
+      emiratesIdNumber: isCompany ? undefined : emiratesIdNumber?.trim() || undefined,
+      passportNumber: isCompany ? undefined : passportNumber?.trim() || undefined,
+      nationality: nationality?.trim() || undefined,
       flags,
     };
   }

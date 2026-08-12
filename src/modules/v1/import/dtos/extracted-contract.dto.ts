@@ -81,6 +81,25 @@ export class ExtractedTenantDto {
   @IsString()
   tradeLicenseNumber?: string | null;
 
+  /**
+   * Individual identity fields. Residential DMT contracts print the tenant's
+   * Emirates ID (and sometimes passport/nationality) in the Tenant Details
+   * section; commercial ones frequently don't. Extracted when present so
+   * INDIVIDUAL tenants import with a real identity rather than a blank one —
+   * see PDF_IMPORT_OPTIONAL_INDIVIDUAL_FIELDS for what happens when absent.
+   */
+  @IsOptional()
+  @IsString()
+  emiratesIdNumber?: string | null;
+
+  @IsOptional()
+  @IsString()
+  passportNumber?: string | null;
+
+  @IsOptional()
+  @IsString()
+  nationality?: string | null;
+
   @IsOptional()
   @IsString()
   mobile?: string | null;

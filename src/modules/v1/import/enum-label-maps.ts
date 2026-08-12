@@ -33,6 +33,7 @@ export const UNIT_TYPE_LABELS: Record<string, UnitType> = {
   office: UnitType.OFFICE,
   'roof unit': UnitType.ROOF_UNIT,
   warehouse: UnitType.WAREHOUSE,
+  villa: UnitType.VILLA,
 };
 
 export const PROPERTY_STATUS_LABELS: Record<string, PropertyStatus> = {

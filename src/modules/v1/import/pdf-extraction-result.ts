@@ -35,6 +35,13 @@ export interface NormalizedTenantCandidate {
   phone?: string;
   email?: string;
   tradeLicenseNumber?: string;
+  /** Individual-only identity fields, present when the PDF printed them
+   * (typical of residential contracts, often absent on commercial ones). The
+   * matching expiry dates are never on a DMT contract, so they are always
+   * blank — see PDF_IMPORT_OPTIONAL_INDIVIDUAL_FIELDS. */
+  emiratesIdNumber?: string;
+  passportNumber?: string;
+  nationality?: string;
   flags: ExtractionFlag[];
 }
 

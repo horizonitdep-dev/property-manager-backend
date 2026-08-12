@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../database/prisma.service';
 import { CreateBuildingDto } from '../../buildings/dtos/create-building.dto';
 import { CreatePropertyDto } from '../../properties/dtos/create-property.dto';
@@ -12,7 +13,14 @@ import {
   TENANT_TYPE_LABELS,
   PAYMENT_FREQUENCY_LABELS,
 } from '../enum-label-maps';
-import { buildRowResult, mapEnumLabel, validateAgainstDto } from './importers/import-cell.utils';
+import {
+  buildRowResult,
+  mapEnumLabel,
+  validateAgainstDto,
+  DuplicateTracker,
+} from './importers/import-cell.utils';
+import { missingRequiredTenantFields } from '../pdf-tenant-import-fields';
+import { ContractStatus } from '../../../../common/enums/contract-status.enum';
 
 /**
  * Placeholder UUID for a Contract row's tenantId/propertyId when the parent is a
@@ -54,6 +62,10 @@ export class PdfResolutionService {
     const buildingResolver = new EntityResolver();
     const tenantResolver = new EntityResolver();
     const propertyResolver = new EntityResolver();
+    // Buildings/properties/tenants dedupe by REUSING the existing record (a batch
+    // of contracts legitimately shares a building). A contract has no such
+    // reuse — the same contract number twice is always a duplicate import.
+    const duplicateContracts = new DuplicateTracker();
 
     const buildingRows: RowResult[] = [];
     const buildingKeys: string[] = [];
@@ -82,7 +94,14 @@ export class PdfResolutionService {
       );
 
       contractRows.push(
-        await this.buildContractRow(result, rowNumber, tenantRef, unitRefs[0], unitRefs.slice(1)),
+        await this.buildContractRow(
+          result,
+          rowNumber,
+          tenantRef,
+          unitRefs[0],
+          unitRefs.slice(1),
+          duplicateContracts,
+        ),
       );
     }
 
@@ -101,11 +120,16 @@ export class PdfResolutionService {
     outRows: RowResult[],
     outKeys: string[],
   ): Promise<EntityRef> {
-    const key = normalizeKey(result.building.propertyRegistrationNo);
+    // Key on `code`, the same value the DB's partial unique index (buildings_code_active_key)
+    // enforces. Keying on propertyRegistrationNo instead would let two PDFs whose
+    // registration numbers differ but whose Sector+Plot match become two separate
+    // pending rows with an identical code — the second then fails that unique index
+    // mid-transaction and rolls back the whole batch.
+    const code = result.building.code;
+    const key = normalizeKey(code);
     const cached = resolver.get(key);
     if (cached) return cached;
 
-    const code = result.building.code;
     const existing = await this.prisma.building.findFirst({ where: { code, deletedAt: null } });
     if (existing) {
       const ref: EntityRef = { id: existing.id };
@@ -139,17 +163,17 @@ export class PdfResolutionService {
     outRows: RowResult[],
     outKeys: string[],
   ): Promise<EntityRef> {
-    const key = normalizeKey(result.tenant.tradeLicenseNumber || result.tenant.nameEn);
+    const identity = tenantIdentity(result.tenant);
+    const key = identity.key;
     const cached = resolver.get(key);
     if (cached) return cached;
 
-    const existing = result.tenant.tradeLicenseNumber
-      ? await this.prisma.tenant.findFirst({
-          where: { tradeLicenseNumber: result.tenant.tradeLicenseNumber, deletedAt: null },
-        })
-      : await this.prisma.tenant.findFirst({
-          where: { nameEn: { equals: result.tenant.nameEn, mode: 'insensitive' }, deletedAt: null },
-        });
+    // Unlike buildings/properties, tenants have NO unique index backing them up,
+    // so this lookup is the only thing standing between a re-import and a
+    // duplicate tenant. Match on the strongest identifier the PDF gave us.
+    const existing = await this.prisma.tenant.findFirst({
+      where: { ...identity.where, deletedAt: null },
+    });
     if (existing) {
       const ref: EntityRef = { id: existing.id };
       resolver.set(key, ref);
@@ -164,8 +188,18 @@ export class PdfResolutionService {
       phone: result.tenant.phone,
       email: result.tenant.email,
       tradeLicenseNumber: result.tenant.tradeLicenseNumber,
+      emiratesIdNumber: result.tenant.emiratesIdNumber,
+      passportNumber: result.tenant.passportNumber,
+      nationality: result.tenant.nationality,
     };
     const { errors, value } = await validateAgainstDto(CreateTenantDto, plain);
+
+    // The DTO alone can't catch an ABSENT tenant-type-required field (see
+    // missingRequiredTenantFields). Without this, such a row previews as VALID
+    // and then fails the service's own check at commit, rolling back the batch.
+    for (const field of missingRequiredTenantFields(value as unknown as Record<string, unknown>)) {
+      errors.push({ field, message: `${field} is required when tenantType is ${tenantType}` });
+    }
 
     outRows.push(buildRowResult(rowNumber, value as unknown as Record<string, unknown>, errors));
     outKeys.push(key);
@@ -183,14 +217,26 @@ export class PdfResolutionService {
     outRows: RowResult[],
     outKeys: string[],
   ): Promise<EntityRef> {
-    const buildingKey = normalizeKey(result.building.propertyRegistrationNo);
+    // Scope the key by the SAME building identity resolveBuilding used (its code,
+    // or the resolved id for one already in the DB) — keying by
+    // propertyRegistrationNo here while the building keys by code lets the two
+    // disagree about which units share a building.
+    const buildingKey = buildingRef.id ?? normalizeKey(result.building.code);
     const key = `${buildingKey}::${normalizeKey(unit.unitNumber)}`;
     const cached = resolver.get(key);
     if (cached) return cached;
 
     if (buildingRef.id) {
       const existing = await this.prisma.property.findFirst({
-        where: { buildingId: buildingRef.id, unitNumber: unit.unitNumber, deletedAt: null },
+        // Case-insensitive to match the in-batch key, which is normalized: an
+        // exact match would treat 'Shop 7' and 'SHOP 7' as the same unit within
+        // the batch but as different ones against the DB, and the resulting
+        // insert would then violate properties_building_id_unit_number_active_key.
+        where: {
+          buildingId: buildingRef.id,
+          unitNumber: { equals: unit.unitNumber, mode: 'insensitive' },
+          deletedAt: null,
+        },
       });
       if (existing) {
         const ref: EntityRef = { id: existing.id };
@@ -236,6 +282,7 @@ export class PdfResolutionService {
     tenantRef: EntityRef,
     firstUnitRef: EntityRef,
     otherUnitRefs: EntityRef[],
+    duplicateContracts: DuplicateTracker,
   ): Promise<RowResult> {
     const errors: { field: string; message: string }[] = [];
     const paymentFrequency = mapEnumLabel(result.contract.paymentFrequency, PAYMENT_FREQUENCY_LABELS) ?? undefined;
@@ -257,10 +304,26 @@ export class PdfResolutionService {
       paymentFrequency,
       numberOfCheques: result.contract.numberOfCheques,
       securityDeposit: result.contract.securityDeposit,
+      // A DMT PDF is a signed, executed tenancy contract, not a draft — without
+      // this it would fall through to CreateContractDto's DRAFT default. ACTIVE
+      // is also what makes the occupancy recompute and the overlap rule apply.
+      // EXPIRED/EXPIRING_SOON are computed from the dates, never stored, so an
+      // already-ended contract still stores ACTIVE and simply reads as expired.
+      status: ContractStatus.ACTIVE,
       notes: result.contract.notes,
     };
 
     const { errors: dtoErrors, value } = await validateAgainstDto(CreateContractDto, plain);
+
+    await this.checkContractDuplicates(
+      result.contract.contractNumber,
+      rowNumber,
+      firstUnitRef,
+      result.contract.startDate,
+      result.contract.endDate,
+      duplicateContracts,
+      errors,
+    );
 
     const resolvedRefs: Record<string, string> = {
       tenantId: entityRefToken(tenantRef, 'tenant'),
@@ -276,6 +339,68 @@ export class PdfResolutionService {
       [...errors, ...dtoErrors],
       resolvedRefs,
     );
+  }
+
+  /**
+   * Blocks a contract that already exists, so re-uploading the same PDF (or the
+   * same contract twice in one batch) can't create a second copy. Contracts are
+   * the only entity here without a natural reuse path — a repeated building or
+   * tenant links to the existing record, but a repeated contract is duplicate data.
+   *
+   * Reported at preview time so the row shows as ERROR and is simply skipped at
+   * commit, rather than surfacing as a mid-transaction failure.
+   */
+  private async checkContractDuplicates(
+    contractNumber: string,
+    rowNumber: number,
+    unitRef: EntityRef,
+    startDate: string,
+    endDate: string,
+    duplicateContracts: DuplicateTracker,
+    errors: { field: string; message: string }[],
+  ): Promise<void> {
+    const key = normalizeKey(contractNumber);
+
+    const firstRow = duplicateContracts.check(key, rowNumber);
+    if (firstRow !== null) {
+      errors.push({
+        field: 'contractNumber',
+        message: `Duplicate Contract Number '${contractNumber}' — already used by row ${firstRow} in this batch`,
+      });
+      return;
+    }
+
+    const existing = await this.prisma.contract.findFirst({
+      where: { contractNumber, deletedAt: null },
+    });
+    if (existing) {
+      errors.push({
+        field: 'contractNumber',
+        message: `Contract Number '${contractNumber}' already exists — this contract has already been imported`,
+      });
+      return;
+    }
+
+    // Overlap can only pre-exist against a property already in the DB; a pending
+    // one has no contracts yet. ContractsService.create() re-checks at commit for
+    // real (and catches two rows in this same batch that would overlap each other).
+    if (!unitRef.id) return;
+
+    const conflict = await this.prisma.contract.findFirst({
+      where: {
+        propertyId: unitRef.id,
+        status: ContractStatus.ACTIVE,
+        deletedAt: null,
+        startDate: { lte: new Date(endDate) },
+        endDate: { gte: new Date(startDate) },
+      },
+    });
+    if (conflict) {
+      errors.push({
+        field: 'status',
+        message: `Property already has an active contract (${conflict.contractNumber}) overlapping these dates`,
+      });
+    }
   }
 }
 
@@ -302,4 +427,41 @@ class EntityResolver {
 
 function normalizeKey(value: string): string {
   return value.trim().toLowerCase();
+}
+
+/**
+ * How a tenant is identified for dedupe, strongest identifier first:
+ * trade licence (company) → Emirates ID → passport → name.
+ *
+ * Name is the last resort, and a poor one in both directions: two different
+ * people who share a name would be merged into one tenant, and one person whose
+ * name is spelled differently across two PDFs would be duplicated. Now that the
+ * extraction captures Emirates ID and passport (see ExtractedTenantDto), an
+ * individual normally matches on a real identifier instead.
+ *
+ * The `where` clause deliberately mirrors the key so the in-batch cache and the
+ * DB lookup can never disagree about whether two tenants are the same person.
+ */
+function tenantIdentity(tenant: {
+  tradeLicenseNumber?: string;
+  emiratesIdNumber?: string;
+  passportNumber?: string;
+  nameEn: string;
+}): { key: string; where: Prisma.TenantWhereInput } {
+  if (tenant.tradeLicenseNumber?.trim()) {
+    const value = tenant.tradeLicenseNumber.trim();
+    return { key: `trade:${normalizeKey(value)}`, where: { tradeLicenseNumber: value } };
+  }
+  if (tenant.emiratesIdNumber?.trim()) {
+    const value = tenant.emiratesIdNumber.trim();
+    return { key: `eid:${normalizeKey(value)}`, where: { emiratesIdNumber: value } };
+  }
+  if (tenant.passportNumber?.trim()) {
+    const value = tenant.passportNumber.trim();
+    return { key: `passport:${normalizeKey(value)}`, where: { passportNumber: value } };
+  }
+  return {
+    key: `name:${normalizeKey(tenant.nameEn)}`,
+    where: { nameEn: { equals: tenant.nameEn, mode: 'insensitive' } },
+  };
 }

@@ -191,6 +191,67 @@ describe('PdfExtractionService', () => {
     ).toBe(true);
   });
 
+  it('extracts an individual tenant\'s Emirates ID (residential contracts print it)', async () => {
+    mockCreate.mockResolvedValue(
+      textResponse({
+        ...baseExtraction,
+        tenant: {
+          companyNameEn: null,
+          companyNameAr: null,
+          individualNameEn: 'Wali Ullah Yaqoob Khan',
+          individualNameAr: 'ولي الله يعقوب خان',
+          tradeLicenseNumber: null,
+          emiratesIdNumber: '784-1990-1234567-1',
+          passportNumber: 'P1234567',
+          nationality: 'Pakistan',
+          mobile: '+971501234567',
+          email: null,
+        },
+      }),
+    );
+
+    const result = await service.extractContract(Buffer.from('pdf'), 'residential.pdf');
+
+    expect(result.tenant.tenantType).toBe('Individual');
+    expect(result.tenant.emiratesIdNumber).toBe('784-1990-1234567-1');
+    expect(result.tenant.passportNumber).toBe('P1234567');
+    expect(result.tenant.nationality).toBe('Pakistan');
+    expect(result.tenant.tradeLicenseNumber).toBeUndefined();
+    expect(result.tenant.flags.some((f) => f.field === 'emiratesIdNumber' && f.status === 'ok')).toBe(true);
+  });
+
+  it('flags an individual tenant with no Emirates ID without failing extraction', async () => {
+    mockCreate.mockResolvedValue(
+      textResponse({
+        ...baseExtraction,
+        tenant: {
+          companyNameEn: null,
+          companyNameAr: null,
+          individualNameEn: 'Wali Ullah Yaqoob Khan',
+          individualNameAr: null,
+          tradeLicenseNumber: null,
+          emiratesIdNumber: null,
+          passportNumber: null,
+          nationality: null,
+          mobile: null,
+          email: null,
+        },
+      }),
+    );
+
+    const result = await service.extractContract(Buffer.from('pdf'), 'commercial.pdf');
+
+    expect(result.tenant.tenantType).toBe('Individual');
+    expect(result.tenant.emiratesIdNumber).toBeUndefined();
+    expect(
+      result.tenant.flags.some((f) => f.field === 'emiratesIdNumber' && f.status === 'missing'),
+    ).toBe(true);
+    // The expiry dates are never on a DMT contract — surfaced, never guessed.
+    expect(
+      result.tenant.flags.some((f) => f.field === 'individualProfile' && f.status === 'missing'),
+    ).toBe(true);
+  });
+
   it('throws PdfExtractionError on malformed JSON without crashing', async () => {
     mockCreate.mockResolvedValue({
       stop_reason: 'end_turn',
