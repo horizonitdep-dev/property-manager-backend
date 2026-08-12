@@ -5,4 +5,5 @@ export enum UnitType {
   OFFICE = 'OFFICE',
   ROOF_UNIT = 'ROOF_UNIT',
   WAREHOUSE = 'WAREHOUSE',
+  VILLA = 'VILLA',
 }

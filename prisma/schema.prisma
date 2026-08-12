@@ -30,6 +30,7 @@ enum UnitType {
   OFFICE
   ROOF_UNIT
   WAREHOUSE
+  VILLA
 }
 
 enum PropertyStatus {
