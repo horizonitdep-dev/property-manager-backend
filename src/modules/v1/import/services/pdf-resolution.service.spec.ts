@@ -4,7 +4,7 @@ import { ExtractedContractResult } from '../pdf-extraction-result';
 import { PdfResolutionService, PdfExtractionWithRowNumber } from './pdf-resolution.service';
 
 const prisma = {
-  building: { findFirst: jest.fn() },
+  building: { findFirst: jest.fn(), findMany: jest.fn() },
   property: { findFirst: jest.fn() },
   tenant: { findFirst: jest.fn() },
   contract: { findFirst: jest.fn() },
@@ -64,6 +64,7 @@ describe('PdfResolutionService', () => {
   beforeEach(async () => {
     jest.resetAllMocks();
     // Default: nothing already in the database.
+    prisma.building.findMany.mockResolvedValue([]);
     prisma.building.findFirst.mockResolvedValue(null);
     prisma.property.findFirst.mockResolvedValue(null);
     prisma.tenant.findFirst.mockResolvedValue(null);
@@ -114,6 +115,40 @@ describe('PdfResolutionService', () => {
       );
 
       expect(result.buildings.rows).toHaveLength(1);
+    });
+
+    it('reuses a building already registered with its code the other way round', async () => {
+      // The reported bug: 'R6-MZW16' existed (imported from the Excel sheet) and
+      // a DMT PDF for that same building re-registered it as 'MZW16-R6'.
+      prisma.building.findMany.mockResolvedValue([{ id: 'existing-building-id', code: 'R6-MZW16' }]);
+
+      const result = await service.resolveBatch(
+        batch(extraction({ building: { code: 'MZW16-R6' } })),
+      );
+
+      expect(result.buildings.rows).toHaveLength(0); // nothing new registered
+      expect(result.properties.rows[0].resolvedRefs?.buildingId).toBe('existing-building-id');
+    });
+
+    it('reuses an existing building whose code differs only in punctuation', async () => {
+      prisma.building.findMany.mockResolvedValue([{ id: 'existing-building-id', code: 'r6 / mzw16' }]);
+
+      const result = await service.resolveBatch(
+        batch(extraction({ building: { code: 'R6-MZW16' } })),
+      );
+
+      expect(result.buildings.rows).toHaveLength(0);
+    });
+
+    it('still registers a genuinely new building', async () => {
+      prisma.building.findMany.mockResolvedValue([{ id: 'other', code: 'Z14-92' }]);
+
+      const result = await service.resolveBatch(
+        batch(extraction({ building: { code: 'R6-MZW16' } })),
+      );
+
+      expect(result.buildings.rows).toHaveLength(1);
+      expect(result.buildings.rows[0].data.code).toBe('R6-MZW16');
     });
 
     it('treats the same unit written in a different case as one property', async () => {
@@ -224,7 +259,7 @@ describe('PdfResolutionService', () => {
     });
 
     it('rejects a contract overlapping an existing active one on the same property', async () => {
-      prisma.building.findFirst.mockResolvedValue({ id: 'building-id' });
+      prisma.building.findMany.mockResolvedValue([{ id: 'building-id', code: 'M17-108' }]);
       prisma.property.findFirst.mockResolvedValue({ id: 'property-id' });
       prisma.contract.findFirst.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
         // no contract-number match; only the overlap query finds something

@@ -75,8 +75,17 @@ export class PdfResolutionService {
     const propertyKeys: string[] = [];
     const contractRows: RowResult[] = [];
 
+    const codeIndex = await this.buildCodeIndex();
+
     for (const { result, rowNumber } of extractions) {
-      const buildingRef = await this.resolveBuilding(result, rowNumber, buildingResolver, buildingRows, buildingKeys);
+      const buildingRef = await this.resolveBuilding(
+        result,
+        rowNumber,
+        buildingResolver,
+        buildingRows,
+        buildingKeys,
+        codeIndex,
+      );
       const tenantRef = await this.resolveTenant(result, rowNumber, tenantResolver, tenantRows, tenantKeys);
 
       const unitRefs = await Promise.all(
@@ -113,24 +122,53 @@ export class PdfResolutionService {
     };
   }
 
+  /**
+   * Every live building keyed by canonical code, loaded once per batch. Cheap
+   * (buildings are few, and it replaces one query per PDF), and it's what lets
+   * the lookup be order-insensitive — something a plain `where: { code }` can't do.
+   *
+   * On a collision (two existing buildings that differ only in component order)
+   * the first by creation wins, so imports attach to the original record.
+   */
+  private async buildCodeIndex(): Promise<Map<string, { id: string; code: string }>> {
+    const buildings = await this.prisma.building.findMany({
+      where: { deletedAt: null },
+      select: { id: true, code: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const index = new Map<string, { id: string; code: string }>();
+    for (const building of buildings) {
+      const key = canonicalBuildingKey(building.code);
+      if (!index.has(key)) index.set(key, building);
+    }
+    return index;
+  }
+
   private async resolveBuilding(
     result: ExtractedContractResult,
     rowNumber: number,
     resolver: EntityResolver,
     outRows: RowResult[],
     outKeys: string[],
+    codeIndex: Map<string, { id: string; code: string }>,
   ): Promise<EntityRef> {
-    // Key on `code`, the same value the DB's partial unique index (buildings_code_active_key)
-    // enforces. Keying on propertyRegistrationNo instead would let two PDFs whose
-    // registration numbers differ but whose Sector+Plot match become two separate
-    // pending rows with an identical code — the second then fails that unique index
-    // mid-transaction and rolls back the whole batch.
+    // Key on the code's canonical form so the in-batch cache and the existing-building
+    // lookup agree, and so neither the component ORDER nor punctuation can split one
+    // building into two. Keying on propertyRegistrationNo instead would let two PDFs
+    // whose registration numbers differ but whose plot+sector match become separate
+    // pending rows with an identical code — the second then fails the DB's unique
+    // index mid-transaction and rolls back the whole batch.
     const code = result.building.code;
-    const key = normalizeKey(code);
+    const key = canonicalBuildingKey(code);
     const cached = resolver.get(key);
     if (cached) return cached;
 
-    const existing = await this.prisma.building.findFirst({ where: { code, deletedAt: null } });
+    // Reuse an existing building whichever order its code was written in, so a
+    // building already registered as 'R6-MZW16' is never re-registered as
+    // 'MZW16-R6'. Its stored code is left exactly as it is — the PDF links to
+    // the existing record, it does not rename it.
+    const existing = codeIndex.get(key);
     if (existing) {
       const ref: EntityRef = { id: existing.id };
       resolver.set(key, ref);
@@ -221,7 +259,7 @@ export class PdfResolutionService {
     // or the resolved id for one already in the DB) — keying by
     // propertyRegistrationNo here while the building keys by code lets the two
     // disagree about which units share a building.
-    const buildingKey = buildingRef.id ?? normalizeKey(result.building.code);
+    const buildingKey = buildingRef.id ?? canonicalBuildingKey(result.building.code);
     const key = `${buildingKey}::${normalizeKey(unit.unitNumber)}`;
     const cached = resolver.get(key);
     if (cached) return cached;
@@ -370,8 +408,11 @@ export class PdfResolutionService {
       return;
     }
 
+    // Case-insensitive so it agrees with the in-batch key above, which is
+    // normalized — otherwise 'abc-1' and 'ABC-1' would count as duplicates
+    // within a batch but as two different contracts against the database.
     const existing = await this.prisma.contract.findFirst({
-      where: { contractNumber, deletedAt: null },
+      where: { contractNumber: { equals: contractNumber, mode: 'insensitive' }, deletedAt: null },
     });
     if (existing) {
       errors.push({
@@ -427,6 +468,25 @@ class EntityResolver {
 
 function normalizeKey(value: string): string {
   return value.trim().toLowerCase();
+}
+
+/**
+ * A building code reduced to its identifying parts, order-independent:
+ * 'R6-MZW16', 'MZW16-R6', 'mzw16 / r6' and 'R6_MZW16' all collapse to the same key.
+ *
+ * DMT prints the plot and sector as separate fields, and the two get written in
+ * either order depending on who entered the building first. Comparing the raw
+ * string meant a PDF for a building already registered as 'R6-MZW16' derived
+ * 'MZW16-R6', matched nothing, and registered the same building a second time.
+ * Sorting the parts makes that impossible in either direction.
+ */
+function canonicalBuildingKey(code: string): string {
+  return code
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .filter(Boolean)
+    .sort()
+    .join('-');
 }
 
 /**

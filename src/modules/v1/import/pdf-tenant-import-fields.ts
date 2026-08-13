@@ -2,6 +2,7 @@ import {
   IMPORT_OPTIONAL_COMPANY_FIELDS,
   getMissingTenantTypeFields,
 } from '../tenants/validators/tenant-type-fields.validator';
+import { TenantType } from '../../../common/enums/tenant-type.enum';
 
 /**
  * INDIVIDUAL fields the PDF import path is allowed to leave blank, mirroring what
@@ -28,7 +29,7 @@ export const PDF_IMPORT_OPTIONAL_INDIVIDUAL_FIELDS = [
 
 /** The exemption list TenantsService.create() should be given for this tenant. */
 export function exemptFieldsForTenantType(tenantType: unknown): readonly string[] {
-  return tenantType === 'INDIVIDUAL'
+  return tenantType === TenantType.INDIVIDUAL
     ? PDF_IMPORT_OPTIONAL_INDIVIDUAL_FIELDS
     : IMPORT_OPTIONAL_COMPANY_FIELDS;
 }

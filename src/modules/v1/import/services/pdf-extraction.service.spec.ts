@@ -98,9 +98,24 @@ describe('PdfExtractionService', () => {
     expect(result.contract.numberOfCheques).toBe(4);
     expect(result.contract.monthlyRent).toBe(2000); // round(24000/12)
     expect(result.contract.flags.some((f) => f.field === 'monthlyRent' && f.status === 'derived')).toBe(true);
-    expect(result.building.code).toBe('SECTOR-2-PLOT-3'); // derived from Sector + Plot No.
-    expect(result.building.name).toBe('Building SECTOR-2-PLOT-3');
+    expect(result.building.code).toBe('PLOT-3-SECTOR-2'); // Plot No. first, then Sector
+    expect(result.building.name).toBe('PLOT-3-SECTOR-2'); // the code itself, unprefixed
     expect(result.building.flags.some((f) => f.field === 'code' && f.status === 'ok')).toBe(true);
+  });
+
+  it('builds the code as Plot-Sector, matching existing Excel-imported buildings', async () => {
+    // Real case: plot R6 in sector MZW16 is registered as 'R6-MZW16'. Emitting
+    // 'MZW16-R6' registered that building a second time.
+    mockCreate.mockResolvedValue(
+      textResponse({
+        ...baseExtraction,
+        building: { ...baseExtraction.building, sector: 'MZW16', plotNo: 'R6' },
+      }),
+    );
+
+    const result = await service.extractContract(Buffer.from('pdf'), 'contract.pdf');
+
+    expect(result.building.code).toBe('R6-MZW16');
   });
 
   it('falls back to the property registration number for building code when Sector/Plot No. are missing', async () => {

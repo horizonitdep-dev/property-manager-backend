@@ -257,7 +257,7 @@ export class PdfExtractionService {
     flags.push({
       field: 'name',
       status: 'guessed',
-      note: 'DMT PDFs do not carry a building name — derived from the building code',
+      note: 'DMT PDFs do not carry a building name — set to the building code',
     });
 
     flags.push({
@@ -281,7 +281,7 @@ export class PdfExtractionService {
     return {
       propertyRegistrationNo,
       code,
-      name: `Building ${code}`,
+      name: code,
       address,
       city: 'Abu Dhabi',
       flags,
@@ -304,9 +304,14 @@ export class PdfExtractionService {
       flags.push({
         field: 'code',
         status: 'ok',
-        note: `Derived from Sector '${trimmedSector}' + Plot No. '${trimmedPlotNo}'`,
+        note: `Derived from Plot No. '${trimmedPlotNo}' + Sector '${trimmedSector}'`,
       });
-      return this.toBuildingCode(`${trimmedSector}-${trimmedPlotNo}`);
+      // Plot first, then sector — the convention the existing (Excel-imported)
+      // buildings use, e.g. plot R6 in sector MZW16 is 'R6-MZW16'. Emitting the
+      // other order registered a second building for one that already existed.
+      // Matching is order-insensitive regardless (see buildCodeIndex), so an
+      // existing building is reused whichever way round its code was written.
+      return this.toBuildingCode(`${trimmedPlotNo}-${trimmedSector}`);
     }
 
     flags.push({
