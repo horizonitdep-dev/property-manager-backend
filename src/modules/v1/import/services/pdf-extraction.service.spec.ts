@@ -252,6 +252,50 @@ describe('PdfExtractionService', () => {
     ).toBe(true);
   });
 
+  it('treats an area of 0 as not stated rather than a real measurement', async () => {
+    // CreatePropertyDto allows sizeSqm to be absent but requires it to be
+    // positive when present, so passing a literal 0 through failed the row with
+    // "sizeSqm must be a positive number" on the preview screen.
+    mockCreate.mockResolvedValue(
+      textResponse({
+        ...baseExtraction,
+        units: [{ unitNumber: 'Shop 1', unitType: 'SHOP', areaSqm: 0, premiseNo: null, unitRegNo: null }],
+      }),
+    );
+
+    const result = await service.extractContract(Buffer.from('pdf'), 'contract.pdf');
+
+    expect(result.units[0].sizeSqm).toBeUndefined();
+    expect(result.units[0].flags.some((f) => f.field === 'sizeSqm' && f.status === 'missing')).toBe(true);
+  });
+
+  it('keeps a real area intact', async () => {
+    mockCreate.mockResolvedValue(textResponse(baseExtraction));
+
+    const result = await service.extractContract(Buffer.from('pdf'), 'contract.pdf');
+
+    expect(result.units[0].sizeSqm).toBe(40);
+  });
+
+  it('assumes one cheque when the PDF states a payment count of 0', async () => {
+    // Same class of bug as sizeSqm: 0 fails @Min(1) and the service's
+    // "required when paymentFrequency is CHEQUES" rule.
+    mockCreate.mockResolvedValue(
+      textResponse({
+        ...baseExtraction,
+        contract: { ...baseExtraction.contract, paymentMethod: 'Cheque', numberOfPayments: 0 },
+      }),
+    );
+
+    const result = await service.extractContract(Buffer.from('pdf'), 'contract.pdf');
+
+    expect(result.contract.paymentFrequency).toBe('Cheques');
+    expect(result.contract.numberOfCheques).toBe(1);
+    expect(
+      result.contract.flags.some((f) => f.field === 'numberOfCheques' && f.status === 'guessed'),
+    ).toBe(true);
+  });
+
   it('throws PdfExtractionError on malformed JSON without crashing', async () => {
     mockCreate.mockResolvedValue({
       stop_reason: 'end_turn',

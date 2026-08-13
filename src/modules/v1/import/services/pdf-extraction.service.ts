@@ -333,14 +333,25 @@ export class PdfExtractionService {
       note: guessed ? `DMT label '${unit.unitType}' mapped to best fit` : undefined,
     });
 
+    // CreatePropertyDto allows sizeSqm to be absent but requires it to be
+    // POSITIVE when present, so a literal 0 (which DMT prints when the area
+    // simply isn't recorded) is not a usable measurement — passing it straight
+    // through fails validation and blocks the row. Treat it as "not stated".
+    const hasArea = unit.areaSqm != null && unit.areaSqm > 0;
     if (unit.areaSqm == null) {
       flags.push({ field: 'sizeSqm', status: 'missing', note: 'Not present on the PDF' });
+    } else if (!hasArea) {
+      flags.push({
+        field: 'sizeSqm',
+        status: 'missing',
+        note: `The PDF records the area as ${unit.areaSqm} — imported blank rather than as a real measurement; please confirm the actual size`,
+      });
     }
 
     return {
       unitNumber: unit.unitNumber,
       unitType: label,
-      sizeSqm: unit.areaSqm ?? undefined,
+      sizeSqm: hasArea ? unit.areaSqm ?? undefined : undefined,
       flags,
     };
   }
@@ -454,15 +465,20 @@ export class PdfExtractionService {
       note: 'DMT PDFs do not state a monthly figure — computed as round(annualRent / 12)',
     });
 
-    const { paymentFrequency, numberOfCheques, guessed, cashNote } = this.mapPaymentMethod(
-      paymentMethod,
-      numberOfPayments,
-    );
+    const { paymentFrequency, numberOfCheques, guessed, chequeCountGuessed, cashNote } =
+      this.mapPaymentMethod(paymentMethod, numberOfPayments);
     flags.push({
       field: 'paymentFrequency',
       status: guessed ? 'guessed' : 'ok',
       note: guessed ? `DMT payment method '${paymentMethod}' mapped by inferred cadence` : undefined,
     });
+    if (chequeCountGuessed) {
+      flags.push({
+        field: 'numberOfCheques',
+        status: 'guessed',
+        note: `The PDF does not state a usable number of payments (${numberOfPayments ?? 'blank'}) — assumed 1; please confirm`,
+      });
+    }
 
     const notesParts: string[] = [];
     if (extracted.contract.contractType) notesParts.push(`DMT contract type: ${extracted.contract.contractType}`);
@@ -502,15 +518,28 @@ export class PdfExtractionService {
   private mapPaymentMethod(
     paymentMethod: string,
     numberOfPayments: number | null | undefined,
-  ): { paymentFrequency: string; numberOfCheques?: number; guessed: boolean; cashNote?: string } {
+  ): {
+    paymentFrequency: string;
+    numberOfCheques?: number;
+    guessed: boolean;
+    chequeCountGuessed?: boolean;
+    cashNote?: string;
+  } {
     const normalized = paymentMethod.trim().toLowerCase();
 
     if (normalized === 'cheque' || normalized.includes('cheque')) {
       const hasCashToo = normalized.includes('cash');
+      // A cheque contract has at least one cheque by definition, but DMT
+      // sometimes prints 0 or omits the count. Passing that through fails
+      // CreateContractDto's @Min(1) AND the service's "numberOfCheques is
+      // required when paymentFrequency is CHEQUES" rule, blocking the row over
+      // a number the document never stated. Assume the minimum and flag it.
+      const stated = numberOfPayments != null && numberOfPayments > 0;
       return {
         paymentFrequency: 'Cheques',
-        numberOfCheques: numberOfPayments ?? undefined,
+        numberOfCheques: stated ? numberOfPayments : 1,
         guessed: false,
+        chequeCountGuessed: !stated,
         cashNote: hasCashToo ? 'Payment method on PDF: Cash And Cheque' : undefined,
       };
     }
