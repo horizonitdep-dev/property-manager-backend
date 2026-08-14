@@ -8,6 +8,11 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: string;
+  /** Session id — the RefreshToken row this token was issued against. Lets a
+   * logout end only the device it was called from, and a refresh find its own
+   * session directly. Optional so access tokens issued before the multi-session
+   * change still validate; those simply can't do per-device logout. */
+  sid?: string;
 }
 
 @Injectable()
@@ -32,6 +37,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('User not found or inactive');
     }
 
-    return user;
+    // sid rides along so @CurrentUser('sid') can tell logout which session to end.
+    return { ...user, sid: payload.sid };
   }
 }

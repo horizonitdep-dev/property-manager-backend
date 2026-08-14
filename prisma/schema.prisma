@@ -103,6 +103,9 @@ model User {
   role             UserRole
   isActive         Boolean   @default(true) @map("is_active")
   lastLoginAt      DateTime? @map("last_login_at")
+  // DEPRECATED — superseded by the RefreshToken table, which holds one row per
+  // active session instead of one token per user. Kept only so this migration is
+  // purely additive; safe to drop once no deployment reads it.
   refreshTokenHash String?   @map("refresh_token_hash")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
@@ -121,9 +124,33 @@ model User {
   uploadedContractDocuments ContractDocument[] @relation("ContractDocUploadedBy")
 
   importSessions ImportSession[] @relation("ImportCreatedBy")
+  refreshTokens  RefreshToken[]  @relation("UserRefreshTokens")
 
   @@index([email])
   @@map("users")
+}
+
+// One row per active login session, so a user can be signed in on several devices
+// at once. Previously a single User.refreshTokenHash column held one token for the
+// whole account, so logging in anywhere overwrote it and every other device was
+// signed out the next time its access token expired.
+//
+// `id` doubles as the session id carried in both JWTs as the `sid` claim, so a
+// refresh finds its own row directly (one hash verification) and a logout can end
+// just that device's session.
+model RefreshToken {
+  id        String    @id @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation("UserRefreshTokens", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
 }
 
 model Building {

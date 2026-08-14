@@ -43,17 +43,21 @@ export class AuthController {
   @ApiBody({ type: RefreshTokenDto })
   @ApiResponse({ status: 200, description: 'New access token issued, refresh token rotated' })
   @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
-  refresh(@CurrentUser('id') userId: string) {
-    return this.authService.refresh(userId);
+  refresh(@CurrentUser('id') userId: string, @CurrentUser('sid') sid: string) {
+    return this.authService.refresh(userId, sid);
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Logout and invalidate refresh token' })
+  @ApiOperation({
+    summary: 'Logout and invalidate refresh token',
+    description:
+      'Ends only the session this token belongs to — other devices signed in as the same user stay signed in.',
+  })
   @ApiResponse({ status: 200, description: 'Logged out successfully' })
-  async logout(@CurrentUser('id') userId: string) {
-    await this.authService.logout(userId);
+  async logout(@CurrentUser('id') userId: string, @CurrentUser('sid') sid?: string) {
+    await this.authService.logout(userId, sid);
     return { message: 'Logged out successfully' };
   }
 

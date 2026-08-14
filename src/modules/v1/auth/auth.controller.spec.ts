@@ -62,17 +62,18 @@ describe('AuthController', () => {
       const result = { accessToken: 'new-at', refreshToken: 'new-rt' };
       (authService.refresh as jest.Mock).mockResolvedValue(result);
 
-      const response = await controller.refresh('user-uuid');
+      const response = await controller.refresh('user-uuid', 'session-uuid');
       expect(response).toEqual(result);
+      expect(authService.refresh).toHaveBeenCalledWith('user-uuid', 'session-uuid');
     });
   });
 
   describe('logout', () => {
-    it('should return success message', async () => {
+    it('should end only the session it was called from', async () => {
       (authService.logout as jest.Mock).mockResolvedValue(undefined);
-      const result = await controller.logout('user-uuid');
+      const result = await controller.logout('user-uuid', 'session-uuid');
       expect(result).toEqual({ message: 'Logged out successfully' });
-      expect(authService.logout).toHaveBeenCalledWith('user-uuid');
+      expect(authService.logout).toHaveBeenCalledWith('user-uuid', 'session-uuid');
     });
   });
 
