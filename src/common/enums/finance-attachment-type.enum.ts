@@ -1,0 +1,7 @@
+export enum FinanceAttachmentType {
+  RECEIPT = 'RECEIPT',
+  INVOICE = 'INVOICE',
+  CHEQUE_IMAGE = 'CHEQUE_IMAGE',
+  BANK_STATEMENT = 'BANK_STATEMENT',
+  OTHER = 'OTHER',
+}

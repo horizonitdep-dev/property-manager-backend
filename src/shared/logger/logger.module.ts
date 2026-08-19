@@ -12,6 +12,12 @@ const SENSITIVE_KEYS = [
   'emiratesIdNumber',
   'passportNumber',
   'tradeLicenseNumber',
+  // Finance — money movement should not be reconstructable from the log stream.
+  'amount',
+  'chequeNumber',
+  'bankName',
+  'invoiceNumber',
+  'referenceNumber',
 ];
 
 const redactSensitive = winston.format((info) => {

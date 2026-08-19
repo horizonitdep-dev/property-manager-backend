@@ -95,6 +95,66 @@ enum ImportStatus {
   CANCELLED
 }
 
+// ─── Finance ────────────────────────────────────────────────────────────────
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+  CARD
+  ONLINE
+  // Rent paid in via the courts, e.g. deposited with the rent dispute committee
+  // during a case rather than paid to the landlord directly.
+  COURT_TRANSFER
+  OTHER
+}
+
+enum PaymentKind {
+  RENT
+  SECURITY_DEPOSIT
+  LATE_FEE
+  REFUND // outgoing (deposit returned, overpayment refunded)
+  OTHER
+}
+
+enum ChequeStatus {
+  HELD // received but not yet deposited
+  DEPOSITED // deposited at the bank, awaiting clearance
+  CLEARED // cleared successfully — corresponding Payment exists
+  BOUNCED // returned by the bank
+  REPLACED // superseded by another cheque (see replacedByChequeId)
+  CANCELLED // voided by mutual agreement before deposit
+}
+
+enum ExpenseCategory {
+  MAINTENANCE
+  UTILITY
+  INSURANCE
+  GOV_FEE
+  MUNICIPALITY_FEE
+  CLEANING
+  SECURITY
+  MANAGEMENT
+  LEGAL
+  SALARY
+  OTHER
+}
+
+enum ExpenseSourceType {
+  GENERAL // manually entered (default for now)
+  WORK_ORDER // reserved — created by Services when built
+  UTILITY_BILL // reserved — future utility-bill module
+  IMPORT // created via bulk import
+}
+
+enum FinanceAttachmentType {
+  RECEIPT
+  INVOICE
+  CHEQUE_IMAGE
+  BANK_STATEMENT
+  OTHER
+}
+
 model User {
   id               String    @id @default(uuid()) @db.Uuid
   email            String    @unique
@@ -125,6 +185,17 @@ model User {
 
   importSessions ImportSession[] @relation("ImportCreatedBy")
   refreshTokens  RefreshToken[]  @relation("UserRefreshTokens")
+
+  createdPayments Payment[] @relation("PaymentCreatedBy")
+  updatedPayments Payment[] @relation("PaymentUpdatedBy")
+  createdCheques  Cheque[]  @relation("ChequeCreatedBy")
+  updatedCheques  Cheque[]  @relation("ChequeUpdatedBy")
+  createdExpenses Expense[] @relation("ExpenseCreatedBy")
+  updatedExpenses Expense[] @relation("ExpenseUpdatedBy")
+
+  uploadedPaymentAttachments PaymentAttachment[] @relation("PaymentAttachmentBy")
+  uploadedChequeAttachments  ChequeAttachment[]  @relation("ChequeAttachmentBy")
+  uploadedExpenseAttachments ExpenseAttachment[] @relation("ExpenseAttachmentBy")
 
   @@index([email])
   @@map("users")
@@ -180,6 +251,7 @@ model Building {
   updatedBy User? @relation("BuildingUpdatedBy", fields: [updatedById], references: [id])
 
   properties Property[]
+  expenses   Expense[]
 
   @@index([code])
   @@index([name])
@@ -211,6 +283,7 @@ model Property {
   updatedBy User?    @relation("PropertyUpdatedBy", fields: [updatedById], references: [id])
 
   contracts Contract[]
+  expenses  Expense[]
 
   // Uniqueness of (buildingId, unitNumber) among non-deleted rows only is
   // enforced by a partial unique index (see migration) — same reasoning as
@@ -332,6 +405,10 @@ model Contract {
   createdBy   User               @relation("ContractCreatedBy", fields: [createdById], references: [id])
   updatedBy   User?              @relation("ContractUpdatedBy", fields: [updatedById], references: [id])
 
+  // Finance reads these; Contracts never reads back into Finance for its own logic.
+  payments Payment[]
+  cheques  Cheque[]
+
   @@index([tenantId])
   @@index([propertyId])
   @@index([status])
@@ -381,4 +458,218 @@ model ImportSession {
   @@index([status])
   @@index([createdById])
   @@map("import_sessions")
+}
+
+// ─── Finance ────────────────────────────────────────────────────────────────
+//
+// Finance owns cash flow only. It references Contract/Building/Property and
+// never redefines or edits lease terms (annualRent, paymentFrequency, etc.) —
+// those stay owned by Contracts. Direction is one-way: Finance → Contracts.
+
+// Money that actually arrived (or left, for REFUND). Rows exist only when a real
+// payment happened — there are no pre-generated schedules, so "outstanding" is
+// always computed as contract terms minus these rows.
+model Payment {
+  id         String @id @default(uuid()) @db.Uuid
+  contractId String @map("contract_id") @db.Uuid
+
+  kind   PaymentKind   @default(RENT)
+  amount Decimal       @db.Decimal(12, 2)
+  paidOn DateTime      @map("paid_on") @db.Date
+  method PaymentMethod
+
+  // Optional coverage window — which period this money is for, when known.
+  // Reporting uses it to attribute revenue to the right months.
+  periodStart DateTime? @map("period_start") @db.Date
+  periodEnd   DateTime? @map("period_end") @db.Date
+
+  // Set only when this payment was produced by a cheque clearing. Unique, so one
+  // cheque can never produce two payments.
+  chequeId String? @map("cheque_id") @db.Uuid
+
+  referenceNumber String? @map("reference_number") // TRX id / receipt no
+  notes           String? @db.Text
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+  createdById String    @map("created_by") @db.Uuid
+  updatedById String?   @map("updated_by") @db.Uuid
+
+  contract    Contract            @relation(fields: [contractId], references: [id])
+  cheque      Cheque?             @relation(fields: [chequeId], references: [id])
+  attachments PaymentAttachment[]
+  createdBy   User                @relation("PaymentCreatedBy", fields: [createdById], references: [id])
+  updatedBy   User?               @relation("PaymentUpdatedBy", fields: [updatedById], references: [id])
+
+  @@unique([chequeId])
+  @@index([contractId])
+  @@index([paidOn])
+  @@index([kind])
+  @@index([method])
+  @@index([deletedAt])
+  @@map("payments")
+}
+
+// A post-dated cheque as a first-class object, tracked through its own lifecycle
+// independently of whether money has moved yet. A Payment is created only when
+// the cheque CLEARS — that is the sole path from a cheque to a payment.
+model Cheque {
+  id         String @id @default(uuid()) @db.Uuid
+  contractId String @map("contract_id") @db.Uuid
+
+  chequeNumber String   @map("cheque_number")
+  bankName     String   @map("bank_name")
+  amount       Decimal  @db.Decimal(12, 2)
+  chequeDate   DateTime @map("cheque_date") @db.Date // date written on the cheque (due date)
+
+  status ChequeStatus @default(HELD)
+
+  // Lifecycle timestamps — each set as the cheque reaches that state.
+  receivedOn   DateTime  @map("received_on") @db.Date // when the landlord received it
+  depositedOn  DateTime? @map("deposited_on") @db.Date
+  clearedOn    DateTime? @map("cleared_on") @db.Date
+  bouncedOn    DateTime? @map("bounced_on") @db.Date
+  bounceReason String?   @map("bounce_reason")
+
+  // Replacement chain — typically after a bounce. Unique, so a cheque can only
+  // ever be replaced once and the chain stays a line rather than a tree.
+  replacedByChequeId String? @map("replaced_by_cheque_id") @db.Uuid
+
+  notes String? @db.Text
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+  createdById String    @map("created_by") @db.Uuid
+  updatedById String?   @map("updated_by") @db.Uuid
+
+  contract    Contract           @relation(fields: [contractId], references: [id])
+  replacedBy  Cheque?            @relation("ChequeReplacement", fields: [replacedByChequeId], references: [id])
+  replaces    Cheque?            @relation("ChequeReplacement")
+  payment     Payment? // populated when status = CLEARED
+  attachments ChequeAttachment[]
+  createdBy   User               @relation("ChequeCreatedBy", fields: [createdById], references: [id])
+  updatedBy   User?              @relation("ChequeUpdatedBy", fields: [updatedById], references: [id])
+
+  @@unique([replacedByChequeId])
+  // (bankName, chequeNumber) uniqueness applies only among non-deleted rows and
+  // is enforced by a partial unique index in the migration — same reasoning as
+  // Building.code. A plain @@unique would keep a soft-deleted cheque number
+  // permanently reserved.
+  @@index([bankName, chequeNumber])
+  @@index([contractId])
+  @@index([status])
+  @@index([chequeDate])
+  @@index([deletedAt])
+  @@map("cheques")
+}
+
+// Money going out. Always attributed to a building (an unattributed expense is
+// useless for P&L) and optionally to one unit within it.
+model Expense {
+  id String @id @default(uuid()) @db.Uuid
+
+  buildingId String  @map("building_id") @db.Uuid
+  propertyId String? @map("property_id") @db.Uuid
+
+  category   ExpenseCategory
+  amount     Decimal         @db.Decimal(12, 2)
+  incurredOn DateTime        @map("incurred_on") @db.Date
+
+  vendorName  String        @map("vendor_name")
+  description String        @db.Text
+  method      PaymentMethod
+
+  invoiceNumber String? @map("invoice_number")
+
+  // Extension point: Finance owns ALL expenses, but other modules may originate
+  // them. Services (when built) will create rows with sourceType = WORK_ORDER
+  // and sourceRefId pointing at its own record, via a shared service method.
+  // Nothing sets these manually today; the API rejects incoherent combinations.
+  sourceType    ExpenseSourceType @default(GENERAL) @map("source_type")
+  sourceRefId   String?           @map("source_ref_id") @db.Uuid // e.g. work order id
+  sourceRefType String?           @map("source_ref_type") // human label, e.g. "work_order"
+
+  notes String? @db.Text
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+  createdById String    @map("created_by") @db.Uuid
+  updatedById String?   @map("updated_by") @db.Uuid
+
+  building    Building            @relation(fields: [buildingId], references: [id])
+  property    Property?           @relation(fields: [propertyId], references: [id])
+  attachments ExpenseAttachment[]
+  createdBy   User                @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
+  updatedBy   User?               @relation("ExpenseUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([buildingId])
+  @@index([propertyId])
+  @@index([category])
+  @@index([incurredOn])
+  @@index([sourceType, sourceRefId])
+  @@index([deletedAt])
+  @@map("expenses")
+}
+
+model PaymentAttachment {
+  id           String                @id @default(uuid()) @db.Uuid
+  paymentId    String                @map("payment_id") @db.Uuid
+  type         FinanceAttachmentType @default(RECEIPT)
+  fileName     String                @map("file_name")
+  fileKey      String                @map("file_key")
+  fileSize     Int                   @map("file_size")
+  mimeType     String                @map("mime_type")
+  uploadedAt   DateTime              @default(now()) @map("uploaded_at")
+  uploadedById String                @map("uploaded_by") @db.Uuid
+  deletedAt    DateTime?             @map("deleted_at")
+
+  payment    Payment @relation(fields: [paymentId], references: [id])
+  uploadedBy User    @relation("PaymentAttachmentBy", fields: [uploadedById], references: [id])
+
+  @@index([paymentId])
+  @@index([deletedAt])
+  @@map("payment_attachments")
+}
+
+model ChequeAttachment {
+  id           String                @id @default(uuid()) @db.Uuid
+  chequeId     String                @map("cheque_id") @db.Uuid
+  type         FinanceAttachmentType @default(CHEQUE_IMAGE)
+  fileName     String                @map("file_name")
+  fileKey      String                @map("file_key")
+  fileSize     Int                   @map("file_size")
+  mimeType     String                @map("mime_type")
+  uploadedAt   DateTime              @default(now()) @map("uploaded_at")
+  uploadedById String                @map("uploaded_by") @db.Uuid
+  deletedAt    DateTime?             @map("deleted_at")
+
+  cheque     Cheque @relation(fields: [chequeId], references: [id])
+  uploadedBy User   @relation("ChequeAttachmentBy", fields: [uploadedById], references: [id])
+
+  @@index([chequeId])
+  @@index([deletedAt])
+  @@map("cheque_attachments")
+}
+
+model ExpenseAttachment {
+  id           String                @id @default(uuid()) @db.Uuid
+  expenseId    String                @map("expense_id") @db.Uuid
+  type         FinanceAttachmentType @default(INVOICE)
+  fileName     String                @map("file_name")
+  fileKey      String                @map("file_key")
+  fileSize     Int                   @map("file_size")
+  mimeType     String                @map("mime_type")
+  uploadedAt   DateTime              @default(now()) @map("uploaded_at")
+  uploadedById String                @map("uploaded_by") @db.Uuid
+  deletedAt    DateTime?             @map("deleted_at")
+
+  expense    Expense @relation(fields: [expenseId], references: [id])
+  uploadedBy User    @relation("ExpenseAttachmentBy", fields: [uploadedById], references: [id])
+
+  @@index([expenseId])
+  @@index([deletedAt])
+  @@map("expense_attachments")
 }
