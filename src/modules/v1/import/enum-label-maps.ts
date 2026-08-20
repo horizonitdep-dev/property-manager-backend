@@ -34,6 +34,13 @@ export const UNIT_TYPE_LABELS: Record<string, UnitType> = {
   'roof unit': UnitType.ROOF_UNIT,
   warehouse: UnitType.WAREHOUSE,
   villa: UnitType.VILLA,
+  showroom: UnitType.SHOWROOM,
+  'show room': UnitType.SHOWROOM,
+  store: UnitType.STORE,
+  workshop: UnitType.WORKSHOP,
+  'camp rooms': UnitType.CAMP_ROOMS,
+  camprooms: UnitType.CAMP_ROOMS,
+  'camp room': UnitType.CAMP_ROOMS,
 };
 
 export const PROPERTY_STATUS_LABELS: Record<string, PropertyStatus> = {

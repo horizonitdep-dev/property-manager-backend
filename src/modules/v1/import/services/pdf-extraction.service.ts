@@ -365,14 +365,20 @@ export class PdfExtractionService {
   private mapUnitType(rawType: string): { label: string; guessed: boolean } {
     const normalized = rawType.trim().toLowerCase();
 
-    // "workshop" and "store" must be checked before the generic "shop" substring
-    // match below — "workshop".includes('shop') is true, so checking shop first
-    // would misclassify every workshop as a plain shop.
+    // "workshop" and "showroom" must be checked before the generic "shop"
+    // substring match below — "workshop".includes('shop') is true, so checking
+    // shop first would misclassify every workshop as a plain shop.
     if (normalized.includes('workshop') || rawType.includes('ورشة')) {
-      return { label: 'Warehouse', guessed: false };
+      return { label: 'Workshop', guessed: false };
+    }
+    if (normalized.includes('showroom') || normalized.includes('show room') || rawType.includes('معرض')) {
+      return { label: 'Showroom', guessed: false };
     }
     if (normalized.includes('store') || rawType.includes('مستودع')) {
-      return { label: 'Warehouse', guessed: false };
+      return { label: 'Store', guessed: false };
+    }
+    if (normalized.includes('camp') || rawType.includes('سكن عمال')) {
+      return { label: 'Camp Rooms', guessed: false };
     }
     if (normalized.includes('shop')) return { label: 'Shop', guessed: false };
     if (normalized.includes('office')) return { label: 'Office', guessed: false };

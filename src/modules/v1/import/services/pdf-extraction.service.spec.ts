@@ -131,28 +131,39 @@ describe('PdfExtractionService', () => {
     expect(result.building.flags.some((f) => f.field === 'code' && f.status === 'guessed')).toBe(true);
   });
 
-  it('maps STORE unit type to Warehouse', async () => {
+  // STORE and WORKSHOP used to collapse into Warehouse because no closer type
+  // existed. They are first-class unit types now, so the detail is preserved.
+  it.each([
+    ['STORE', 'Store'],
+    ['WORKSHOP', 'Workshop'],
+    ['SHOWROOM', 'Showroom'],
+    ['Show Room', 'Showroom'],
+    ['CAMP ROOMS', 'Camp Rooms'],
+    ['WAREHOUSE', 'Warehouse'],
+    ['SHOP', 'Shop'],
+  ])('maps DMT unit type %s to %s', async (raw, expected) => {
     mockCreate.mockResolvedValue(
       textResponse({
         ...baseExtraction,
-        units: [{ ...baseExtraction.units[0], unitType: 'STORE' }],
+        units: [{ ...baseExtraction.units[0], unitType: raw }],
       }),
     );
 
     const result = await service.extractContract(Buffer.from('pdf'), 'contract.pdf');
-    expect(result.units[0].unitType).toBe('Warehouse');
+    expect(result.units[0].unitType).toBe(expected);
   });
 
-  it('maps WORKSHOP unit type to Warehouse', async () => {
+  it('still does not misread WORKSHOP as a plain shop', async () => {
+    // 'workshop'.includes('shop') is true, so ordering in mapUnitType matters.
     mockCreate.mockResolvedValue(
       textResponse({
         ...baseExtraction,
-        units: [{ ...baseExtraction.units[0], unitType: 'WORKSHOP' }],
+        units: [{ ...baseExtraction.units[0], unitType: 'Workshop Unit' }],
       }),
     );
 
     const result = await service.extractContract(Buffer.from('pdf'), 'contract.pdf');
-    expect(result.units[0].unitType).toBe('Warehouse');
+    expect(result.units[0].unitType).toBe('Workshop');
   });
 
   it('maps "Cash" with a single payment to Single Payment', async () => {
