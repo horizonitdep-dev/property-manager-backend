@@ -283,20 +283,6 @@ model Property {
   createdById String  @map("created_by") @db.Uuid
   updatedById String? @map("updated_by") @db.Uuid
 
-  // Derived sort keys, split out of unitNumber so lists order the way people read
-  // them: "Unit 9" before "Unit 10", and bare numbers before named units.
-  //
-  // These are Postgres GENERATED ALWAYS columns (see the migration) — the database
-  // maintains them from unitNumber on every write. Never assign to them; Postgres
-  // rejects an explicit write. They are declared here only so Prisma can ORDER BY
-  // them.
-  //
-  //   "101"          -> prefix ""           number 101
-  //   "Show Room 4"  -> prefix "SHOW ROOM"  number 4
-  //   "Office"       -> prefix "OFFICE"     number null
-  unitSortPrefix String? @map("unit_sort_prefix")
-  unitSortNumber BigInt? @map("unit_sort_number")
-
   building  Building @relation(fields: [buildingId], references: [id])
   createdBy User     @relation("PropertyCreatedBy", fields: [createdById], references: [id])
   updatedBy User?    @relation("PropertyUpdatedBy", fields: [updatedById], references: [id])
@@ -312,8 +298,6 @@ model Property {
   @@index([unitNumber])
   @@index([status])
   @@index([deletedAt])
-  // Backs the default "group by building, then natural unit order" listing.
-  @@index([buildingId, unitSortPrefix, unitSortNumber])
   @@map("properties")
 }
 
