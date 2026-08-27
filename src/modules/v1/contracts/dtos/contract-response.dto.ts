@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentFrequency } from '../../../../common/enums/payment-frequency.enum';
 import { ContractStatus } from '../../../../common/enums/contract-status.enum';
+import { ContractSource } from '../../../../common/enums/contract-source.enum';
 import { TenantType } from '../../../../common/enums/tenant-type.enum';
 import { ContractDocumentType } from '../../../../common/enums/contract-document-type.enum';
 import { PropertyBuildingSummaryDto } from '../../properties/dtos/property-response.dto';
@@ -92,6 +93,14 @@ export class ContractResponseDto {
     description: 'Raw manual status as stored in the DB (DRAFT | ACTIVE | TERMINATED) — for the edit form',
   })
   storedStatus!: ContractStatus;
+
+  @ApiProperty({
+    enum: ContractSource,
+    description:
+      'Which ingestion path created this contract. Set by the importer that created it; MANUAL for ' +
+      'contracts entered through the API. Correctable by a MANAGER via PATCH.',
+  })
+  source!: ContractSource;
 
   @ApiPropertyOptional()
   renewedFromId?: string | null;

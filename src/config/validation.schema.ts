@@ -25,5 +25,14 @@ export const validationSchema = Joi.object({
   // Optional (not required) so the app can boot before the key is configured —
   // PdfExtractionService throws a clear error only when actually invoked without one.
   ANTHROPIC_API_KEY: Joi.string().allow('').optional(),
+  // DMT/Tawtheeq extraction. Deliberately separate from the Green Contract keys
+  // below so the two ingestion paths can be tuned — or rolled back — independently.
   ANTHROPIC_MODEL: Joi.string().default('claude-sonnet-5'),
+  // Green Contract extraction. These are short, single-page landlord contracts,
+  // so the cheapest capable model is used with a small output budget.
+  ANTHROPIC_MODEL_GREEN_CONTRACT: Joi.string().default('claude-haiku-4-5-20251001'),
+  ANTHROPIC_MAX_TOKENS_GREEN_CONTRACT: Joi.number().integer().min(256).max(8192).default(1500),
+  // Zero: extraction must be reproducible. The same contract re-uploaded should
+  // yield the same JSON, otherwise a re-import silently produces different rows.
+  ANTHROPIC_TEMPERATURE_GREEN_CONTRACT: Joi.number().min(0).max(1).default(0),
 });

@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, IsEnum, IsIn, IsInt, Min, Max, IsUUID, IsDateString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ContractStatus } from '../../../../common/enums/contract-status.enum';
+import { ContractSource } from '../../../../common/enums/contract-source.enum';
 
 export class ListContractsQueryDto {
   @ApiPropertyOptional({ default: 1 })
@@ -47,6 +48,14 @@ export class ListContractsQueryDto {
   @IsOptional()
   @IsEnum(ContractStatus)
   status?: ContractStatus;
+
+  @ApiPropertyOptional({
+    enum: ContractSource,
+    description: 'Filter by which ingestion path created the contract',
+  })
+  @IsOptional()
+  @IsEnum(ContractSource)
+  source?: ContractSource;
 
   @ApiPropertyOptional({ description: 'Contracts starting on/after this date (for annual-count queries)' })
   @IsOptional()

@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../database/prisma.service';
 import { ImportModule } from '../../../../common/enums/import-module.enum';
 import { ImportStatus } from '../../../../common/enums/import-status.enum';
+import { ImportSessionType } from '../../../../common/enums/import-session-type.enum';
 import { RowResult } from '../row-result';
 import { ImportCommitRowError } from '../import-commit-row.error';
 import { FileParserService } from './file-parser.service';
@@ -17,6 +18,15 @@ import { BuildingsImporter } from './importers/buildings.importer';
 import { PropertiesImporter } from './importers/properties.importer';
 import { TenantsImporter } from './importers/tenants.importer';
 import { ContractsImporter } from './importers/contracts.importer';
+
+/** This service only ever handles the CSV/XLSX path, so the session type follows
+ * directly from the module being imported. */
+const CSV_SESSION_TYPE_BY_MODULE: Record<ImportModule, ImportSessionType> = {
+  [ImportModule.BUILDINGS]: ImportSessionType.CSV_EXCEL_BUILDINGS,
+  [ImportModule.PROPERTIES]: ImportSessionType.CSV_EXCEL_PROPERTIES,
+  [ImportModule.TENANTS]: ImportSessionType.CSV_EXCEL_TENANTS,
+  [ImportModule.CONTRACTS]: ImportSessionType.CSV_EXCEL_CONTRACTS,
+};
 
 @Injectable()
 export class ImportSessionService {
@@ -50,6 +60,7 @@ export class ImportSessionService {
     const session = await this.prisma.importSession.create({
       data: {
         module,
+        sessionType: CSV_SESSION_TYPE_BY_MODULE[module],
         originalName: file.originalname,
         totalRows: rows.length,
         validRows,

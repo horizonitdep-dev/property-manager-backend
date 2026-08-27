@@ -206,7 +206,7 @@ export class TenantsService {
       tenantType: unknown;
       nameEn: string;
       nameAr: string | null;
-      phone: string;
+      phone: string | null;
       email: string | null;
       status: unknown;
       createdAt: Date;

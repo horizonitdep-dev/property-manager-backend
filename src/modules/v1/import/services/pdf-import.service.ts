@@ -20,6 +20,8 @@ import { CreateTenantDto } from '../../tenants/dtos/create-tenant.dto';
 import { CreateContractDto } from '../../contracts/dtos/create-contract.dto';
 import { exemptFieldsForTenantType } from '../pdf-tenant-import-fields';
 import { ImportModule } from '../../../../common/enums/import-module.enum';
+import { ImportSessionType } from '../../../../common/enums/import-session-type.enum';
+import { ContractSource } from '../../../../common/enums/contract-source.enum';
 import { ImportStatus } from '../../../../common/enums/import-status.enum';
 import { ContractDocumentType } from '../../../../common/enums/contract-document-type.enum';
 import { RowResult } from '../row-result';
@@ -236,6 +238,8 @@ export class PdfImportService {
     const contractSession = await this.prisma.importSession.create({
       data: {
         module: ImportModule.CONTRACTS,
+        // Marks the batch anchor as DMT so the Green Contract endpoints refuse it.
+        sessionType: ImportSessionType.DMT_TAWTHEEQ,
         originalName: files.map((f) => f.originalname).join(', '),
         totalRows: resolved.contracts.length,
         validRows: validContractRows,
@@ -441,7 +445,14 @@ export class PdfImportService {
       const dto = { ...(row.data as Record<string, unknown>), tenantId, propertyId } as unknown as CreateContractDto;
 
       try {
-        const created = await this.contractsService.create(dto, userId);
+        // No tx client here on purpose (see the two-phase commit note above);
+        // the fourth argument records that this contract came from a DMT PDF.
+        const created = await this.contractsService.create(
+          dto,
+          userId,
+          undefined,
+          ContractSource.DMT_TAWTHEEQ,
+        );
         contractIds.push(created.id);
 
         const sourceFile = linkage.sourceFiles?.[row.rowNumber];
@@ -542,6 +553,7 @@ export class PdfImportService {
     const session = await this.prisma.importSession.create({
       data: {
         module,
+        sessionType: ImportSessionType.DMT_TAWTHEEQ,
         originalName: 'DMT PDF ingestion (candidate rows)',
         totalRows: rows.length,
         validRows,

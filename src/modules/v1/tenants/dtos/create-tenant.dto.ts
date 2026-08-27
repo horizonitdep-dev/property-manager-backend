@@ -37,10 +37,15 @@ export class CreateTenantDto {
   @MaxLength(150)
   nameAr?: string;
 
-  @ApiProperty({ example: '+971501234567' })
+  // Optional because tenancy contracts do not always print a phone number, and
+  // an otherwise complete import should not be blocked over a field the source
+  // document does not carry. Still validated when a value IS given — same
+  // pattern as alternatePhone below.
+  @ApiPropertyOptional({ example: '+971501234567' })
+  @ValidateIf((o) => isProvided(o.phone))
   @IsString()
   @Matches(PHONE_REGEX, { message: 'phone must be a valid international phone number' })
-  phone!: string;
+  phone?: string;
 
   @ApiPropertyOptional({ example: '+971501234568' })
   @ValidateIf((o) => isProvided(o.alternatePhone))

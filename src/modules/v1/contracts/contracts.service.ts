@@ -10,6 +10,7 @@ import { TerminateContractDto } from './dtos/terminate-contract.dto';
 import { ListContractsQueryDto } from './dtos/list-contracts.query.dto';
 import { PaginatedResult } from '../../../common/dtos/pagination.dto';
 import { ContractStatus } from '../../../common/enums/contract-status.enum';
+import { ContractSource } from '../../../common/enums/contract-source.enum';
 import { PaymentFrequency } from '../../../common/enums/payment-frequency.enum';
 import { PropertyStatus } from '../../../common/enums/property-status.enum';
 import { computeEffectiveStatus, buildStatusFilter } from './helpers/contract-status.helper';
@@ -47,6 +48,7 @@ export class ContractsService {
       propertyId,
       buildingId,
       status,
+      source,
       startDateFrom,
       startDateTo,
       sortBy = 'createdAt',
@@ -61,6 +63,7 @@ export class ContractsService {
       ...(propertyId && { propertyId }),
       ...(buildingId && { property: { buildingId } }),
       ...(status && buildStatusFilter(status)),
+      ...(source && { source }),
       ...((startDateFrom || startDateTo) && {
         startDate: {
           ...(startDateFrom && { gte: new Date(startDateFrom) }),
@@ -129,7 +132,19 @@ export class ContractsService {
    * run as an independent, separately-committing transaction and break the
    * caller's atomicity.
    */
-  async create(dto: CreateContractDto, userId: string, client?: Prisma.TransactionClient) {
+  /**
+   * `source` is a service parameter rather than a DTO field on purpose: it records
+   * which ingestion path created the contract, so letting an API caller assert it
+   * on POST /contracts would make the provenance unreliable. Importers pass their
+   * own value; anything coming through the controller stays MANUAL. A MANAGER can
+   * still correct it afterwards via PATCH (spec §8.4).
+   */
+  async create(
+    dto: CreateContractDto,
+    userId: string,
+    client?: Prisma.TransactionClient,
+    source: ContractSource = ContractSource.MANUAL,
+  ) {
     await this.tenantsService.ensureTenantExists(dto.tenantId);
     await this.propertiesService.findOne(dto.propertyId);
 
@@ -157,6 +172,7 @@ export class ContractsService {
           startDate,
           endDate,
           status,
+          source,
           createdById: userId,
         },
         include: contractSummaryInclude,
@@ -433,6 +449,7 @@ export class ContractsService {
       securityDeposit: contract.securityDeposit,
       status: computeEffectiveStatus(contract.status as unknown as ContractStatus, contract.endDate),
       storedStatus: contract.status,
+      source: contract.source,
       renewedFromId: contract.renewedFromId,
       tenant: contract.tenant,
       property: contract.property,

@@ -100,6 +100,28 @@ enum ImportStatus {
   CANCELLED
 }
 
+/// Which ingestion path produced an ImportSession. Lets the Green Contract flow
+/// reject sessions belonging to another importer, and keeps the two PDF paths
+/// distinguishable in history.
+enum ImportSessionType {
+  DMT_TAWTHEEQ
+  R6_GREEN_CONTRACT
+  CSV_EXCEL_BUILDINGS
+  CSV_EXCEL_PROPERTIES
+  CSV_EXCEL_TENANTS
+  CSV_EXCEL_CONTRACTS
+}
+
+/// Where a Contract originated. Green Contracts are the landlord's own internal
+/// tenancy agreements; DMT contracts are the registered Tawtheeq ones and are
+/// authoritative wherever both exist.
+enum ContractSource {
+  DMT_TAWTHEEQ
+  R6_GREEN_CONTRACT
+  MANUAL
+  CSV_IMPORT
+}
+
 // ─── Finance ────────────────────────────────────────────────────────────────
 
 enum PaymentMethod {
@@ -230,24 +252,28 @@ model RefreshToken {
 }
 
 model Building {
-  id                 String             @id @default(uuid()) @db.Uuid
-  name               String
+  id                     String             @id @default(uuid()) @db.Uuid
+  name                   String
   // Uniqueness among non-deleted rows only is enforced by a partial unique
   // index (see migration), not by @unique — Postgres unique indexes can't
   // exclude soft-deleted rows on their own, and a soft-deleted building's
   // code must be reusable.
-  code               String
-  address            String
-  city               String
-  buildingType       BuildingType       @map("building_type")
-  totalFloors        Int                @map("total_floors")
-  yearBuilt          Int?               @map("year_built")
-  totalUnits         Int?               @map("total_units")
-  constructionStatus ConstructionStatus @default(COMPLETE) @map("construction_status")
-  notes              String?            @db.Text
-  createdAt          DateTime           @default(now()) @map("created_at")
-  updatedAt          DateTime           @updatedAt @map("updated_at")
-  deletedAt          DateTime?          @map("deleted_at")
+  code                   String
+  address                String
+  city                   String
+  buildingType           BuildingType       @map("building_type")
+  totalFloors            Int                @map("total_floors")
+  yearBuilt              Int?               @map("year_built")
+  totalUnits             Int?               @map("total_units")
+  constructionStatus     ConstructionStatus @default(COMPLETE) @map("construction_status")
+  // The DMT/Tawtheeq property registration number (PRP…). Optional: Green
+  // Contracts are the landlord's own agreements and carry no PRP, so it is never
+  // fabricated for them — `code` is the identifier both paths resolve on.
+  propertyRegistrationNo String?            @map("property_registration_no")
+  notes                  String?            @db.Text
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+  deletedAt              DateTime?          @map("deleted_at")
 
   createdById String  @map("created_by") @db.Uuid
   updatedById String? @map("updated_by") @db.Uuid
@@ -260,6 +286,7 @@ model Building {
 
   @@index([code])
   @@index([name])
+  @@index([propertyRegistrationNo])
   @@index([deletedAt])
   @@map("buildings")
 }
@@ -310,7 +337,7 @@ model Tenant {
   nameAr String? @map("name_ar")
 
   // Contact (both types)
-  phone          String
+  phone          String?
   alternatePhone String? @map("alternate_phone")
   email          String?
 
@@ -392,6 +419,10 @@ model Contract {
   // Stored status holds only manual states: DRAFT | ACTIVE | TERMINATED
   status ContractStatus @default(DRAFT)
 
+  // Which ingestion path created this contract. MANUAL is the default so a
+  // hand-created contract via POST /contracts needs no extra wiring.
+  source ContractSource @default(MANUAL)
+
   renewedFromId String? @map("renewed_from_id") @db.Uuid
 
   notes String? @db.Text
@@ -417,6 +448,7 @@ model Contract {
   @@index([tenantId])
   @@index([propertyId])
   @@index([status])
+  @@index([source])
   @@index([startDate])
   @@index([endDate])
   @@index([deletedAt])
@@ -444,14 +476,17 @@ model ContractDocument {
 }
 
 model ImportSession {
-  id           String       @id @default(uuid()) @db.Uuid
+  id           String            @id @default(uuid()) @db.Uuid
   module       ImportModule
-  status       ImportStatus @default(PENDING_REVIEW)
-  originalName String       @map("original_name")
-  totalRows    Int          @map("total_rows")
-  validRows    Int          @map("valid_rows")
-  errorRows    Int          @map("error_rows")
-  rowsData     Json         @map("rows_data")
+  // Which importer created this session. Backfilled for existing rows — see the
+  // add_green_contract_support migration for how historic sessions were classified.
+  sessionType  ImportSessionType @map("session_type")
+  status       ImportStatus      @default(PENDING_REVIEW)
+  originalName String            @map("original_name")
+  totalRows    Int               @map("total_rows")
+  validRows    Int               @map("valid_rows")
+  errorRows    Int               @map("error_rows")
+  rowsData     Json              @map("rows_data")
 
   createdAt   DateTime  @default(now()) @map("created_at")
   committedAt DateTime? @map("committed_at")
@@ -460,6 +495,7 @@ model ImportSession {
   createdBy User @relation("ImportCreatedBy", fields: [createdById], references: [id])
 
   @@index([module])
+  @@index([sessionType])
   @@index([status])
   @@index([createdById])
   @@map("import_sessions")

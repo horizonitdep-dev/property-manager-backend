@@ -43,8 +43,8 @@ export class TenantResponseDto {
   @ApiPropertyOptional()
   nameAr?: string | null;
 
-  @ApiProperty()
-  phone!: string;
+  @ApiPropertyOptional({ description: 'Absent when the source document carried no phone number' })
+  phone?: string | null;
 
   @ApiPropertyOptional()
   alternatePhone?: string | null;

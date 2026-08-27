@@ -11,6 +11,7 @@ import { ParsedRow, getCell } from '../file-parser.service';
 import { RowResult } from '../../row-result';
 import { ModuleImporter } from './importer.interface';
 import { ImportCommitRowError } from '../../import-commit-row.error';
+import { ContractSource } from '../../../../../common/enums/contract-source.enum';
 import {
   FieldErrors,
   buildRowResult,
@@ -159,6 +160,7 @@ export class ContractsImporter implements ModuleImporter {
             row.data as unknown as CreateContractDto,
             userId,
             tx as Prisma.TransactionClient,
+            ContractSource.CSV_IMPORT,
           );
           inserted++;
         } catch (error) {

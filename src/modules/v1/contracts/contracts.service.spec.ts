@@ -7,6 +7,7 @@ import { TenantsService } from '../tenants/tenants.service';
 import { ContractStatus } from '../../../common/enums/contract-status.enum';
 import { PaymentFrequency } from '../../../common/enums/payment-frequency.enum';
 import { PropertyStatus } from '../../../common/enums/property-status.enum';
+import { ContractSource } from '../../../common/enums/contract-source.enum';
 import { computeEffectiveStatus } from './helpers/contract-status.helper';
 
 type PrismaContract = import('@prisma/client').ContractStatus;
@@ -25,6 +26,7 @@ const mockContract = {
   numberOfCheques: null,
   securityDeposit: null,
   status: ContractStatus.ACTIVE as unknown as PrismaContract,
+  source: ContractSource.MANUAL,
   renewedFromId: null,
   notes: null,
   createdById: 'user-uuid',
@@ -99,6 +101,76 @@ describe('ContractsService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('contract source (spec §8.3/§8.4)', () => {
+    beforeEach(() => {
+      prisma.contract.create.mockResolvedValue(mockContract);
+    });
+
+    it('defaults to MANUAL when no importer supplies one', async () => {
+      // POST /contracts goes through the controller, which never passes a source.
+      await service.create({ ...baseCreateDto, status: ContractStatus.DRAFT }, 'user-uuid');
+
+      expect(prisma.contract.create.mock.calls[0][0].data.source).toBe(ContractSource.MANUAL);
+    });
+
+    it.each([
+      [ContractSource.DMT_TAWTHEEQ],
+      [ContractSource.CSV_IMPORT],
+      [ContractSource.R6_GREEN_CONTRACT],
+    ])('records %s when the importer declares it', async (source) => {
+      await service.create(
+        { ...baseCreateDto, status: ContractStatus.DRAFT },
+        'user-uuid',
+        undefined,
+        source,
+      );
+
+      expect(prisma.contract.create.mock.calls[0][0].data.source).toBe(source);
+    });
+
+    it('cannot be spoofed through the create DTO', async () => {
+      // `source` is a service parameter, not a DTO field, so a request body
+      // claiming DMT provenance is ignored rather than trusted.
+      await service.create(
+        { ...baseCreateDto, status: ContractStatus.DRAFT, source: ContractSource.DMT_TAWTHEEQ } as never,
+        'user-uuid',
+      );
+
+      expect(prisma.contract.create.mock.calls[0][0].data.source).toBe(ContractSource.MANUAL);
+    });
+
+    it('is returned on the response so clients can show provenance', async () => {
+      prisma.contract.findFirst.mockResolvedValue({
+        ...mockContract,
+        source: ContractSource.DMT_TAWTHEEQ,
+      });
+
+      const result = await service.findOne('contract-uuid');
+
+      expect(result.source).toBe(ContractSource.DMT_TAWTHEEQ);
+    });
+
+    it('filters the list by source', async () => {
+      prisma.contract.findMany.mockResolvedValue([mockContract]);
+      prisma.contract.count.mockResolvedValue(1);
+
+      await service.findAll({ source: ContractSource.R6_GREEN_CONTRACT });
+
+      expect(prisma.contract.findMany.mock.calls[0][0].where.source).toBe(
+        ContractSource.R6_GREEN_CONTRACT,
+      );
+    });
+
+    it('omits the source filter entirely when not requested', async () => {
+      prisma.contract.findMany.mockResolvedValue([mockContract]);
+      prisma.contract.count.mockResolvedValue(1);
+
+      await service.findAll({});
+
+      expect(prisma.contract.findMany.mock.calls[0][0].where).not.toHaveProperty('source');
+    });
   });
 
   describe('create', () => {

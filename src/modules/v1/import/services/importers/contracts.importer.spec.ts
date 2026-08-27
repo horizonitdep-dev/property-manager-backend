@@ -3,6 +3,7 @@ import { ContractsImporter } from './contracts.importer';
 import { PrismaService } from '../../../../../database/prisma.service';
 import { ContractsService } from '../../../contracts/contracts.service';
 import { ParsedRow } from '../file-parser.service';
+import { ContractSource } from '../../../../../common/enums/contract-source.enum';
 
 function row(rowNumber: number, values: Record<string, string | null>): ParsedRow {
   return { rowNumber, rawValues: values };
@@ -161,6 +162,9 @@ describe('ContractsImporter', () => {
         { contractNumber: 'C-2026-001' },
         'user-1',
         prisma,
+        // Spec §8.3: the CSV path stamps its own provenance rather than
+        // letting the contract fall through to the MANUAL default.
+        ContractSource.CSV_IMPORT,
       );
     });
   });

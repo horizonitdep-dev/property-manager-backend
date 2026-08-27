@@ -1,0 +1,11 @@
+-- Tenant.phone becomes optional.
+--
+-- Not every tenancy contract prints a phone number. Both PDF import paths
+-- extract the tenant correctly, then failed at DTO validation with
+-- "phone must be a string" because the column was NOT NULL and the DTO
+-- required it — blocking an otherwise complete import over a field the
+-- source document simply does not carry.
+--
+-- Widening only: every existing row already has a value, so nothing is lost
+-- and the change is safe to replay.
+ALTER TABLE "tenants" ALTER COLUMN "phone" DROP NOT NULL;

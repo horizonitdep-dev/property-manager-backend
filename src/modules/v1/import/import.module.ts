@@ -6,12 +6,16 @@ import { ContractsModule } from '../contracts/contracts.module';
 import { ImportController } from './import.controller';
 import { ImportSessionsController } from './import-sessions.controller';
 import { PdfImportController } from './pdf-import.controller';
+import { GreenContractImportController } from './green-contract-import.controller';
 import { FileParserService } from './services/file-parser.service';
 import { TemplateService } from './services/template.service';
 import { ImportSessionService } from './services/import-session.service';
 import { PdfExtractionService } from './services/pdf-extraction.service';
 import { PdfResolutionService } from './services/pdf-resolution.service';
 import { PdfImportService } from './services/pdf-import.service';
+import { GreenContractExtractionService } from './services/green-contract-extraction.service';
+import { GreenContractResolutionService } from './services/green-contract-resolution.service';
+import { GreenContractImportService } from './services/green-contract-import.service';
 import { BuildingsImporter } from './services/importers/buildings.importer';
 import { PropertiesImporter } from './services/importers/properties.importer';
 import { TenantsImporter } from './services/importers/tenants.importer';
@@ -22,12 +26,18 @@ import { ContractsImporter } from './services/importers/contracts.importer';
 // this feature's importers, services, and DTOs.
 @Module({
   imports: [BuildingsModule, PropertiesModule, TenantsModule, ContractsModule],
-  // PdfImportController must be registered before ImportController: Express matches
-  // routes in registration order, and ImportController's dynamic `import/:module/...`
-  // pattern would otherwise swallow PdfImportController's literal `import/pdf/...`
-  // routes first (module='pdf' — never a real slug, so ImportController would just
-  // 400 it, but only after already consuming the request with the wrong interceptor).
-  controllers: [PdfImportController, ImportController, ImportSessionsController],
+  // Both literal-path controllers MUST be registered before ImportController:
+  // Express matches routes in registration order, and ImportController's dynamic
+  // `import/:module/...` pattern would otherwise swallow `import/pdf/...` and
+  // `import/green-contract/...` first (module='pdf'/'green-contract' — never real
+  // slugs, so it would just 400 them, but only after consuming the request with
+  // the wrong file interceptor, which surfaces as a baffling "Unexpected field").
+  controllers: [
+    PdfImportController,
+    GreenContractImportController,
+    ImportController,
+    ImportSessionsController,
+  ],
   providers: [
     FileParserService,
     TemplateService,
@@ -35,6 +45,9 @@ import { ContractsImporter } from './services/importers/contracts.importer';
     PdfExtractionService,
     PdfResolutionService,
     PdfImportService,
+    GreenContractExtractionService,
+    GreenContractResolutionService,
+    GreenContractImportService,
     BuildingsImporter,
     PropertiesImporter,
     TenantsImporter,

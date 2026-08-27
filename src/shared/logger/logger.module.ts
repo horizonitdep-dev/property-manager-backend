@@ -9,6 +9,8 @@ const SENSITIVE_KEYS = [
   'refreshToken',
   'accessToken',
   'authorization',
+  // Tenant identity. Covers every ingestion path — manual entry, CSV, DMT PDF
+  // and Green Contract all funnel through the same tenant fields.
   'emiratesIdNumber',
   'passportNumber',
   'tradeLicenseNumber',
