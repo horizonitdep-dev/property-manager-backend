@@ -103,6 +103,60 @@ describe('ContractsService', () => {
     expect(service).toBeDefined();
   });
 
+  describe('list ordering', () => {
+    beforeEach(() => {
+      prisma.contract.findMany.mockResolvedValue([mockContract]);
+      prisma.contract.count.mockResolvedValue(1);
+    });
+
+    function orderByOf() {
+      return prisma.contract.findMany.mock.calls[0][0].orderBy;
+    }
+
+    it('groups by building then unit by default', async () => {
+      // Previously createdAt desc, which scattered one building's units across
+      // the whole list.
+      await service.findAll({});
+
+      expect(orderByOf()).toEqual([
+        { property: { building: { code: 'asc' } } },
+        { property: { unitNumber: 'asc' } },
+        { startDate: 'desc' },
+        { id: 'asc' },
+      ]);
+    });
+
+    it('shows the newest contract first when a unit has several', async () => {
+      await service.findAll({});
+
+      expect(orderByOf()[2]).toEqual({ startDate: 'desc' });
+    });
+
+    it('tie-breaks on id so pagination is stable', async () => {
+      await service.findAll({});
+
+      expect(orderByOf().at(-1)).toEqual({ id: 'asc' });
+    });
+
+    it('still supports the flat sorts, newest first', async () => {
+      await service.findAll({ sortBy: 'startDate' });
+
+      expect(orderByOf()).toEqual([{ startDate: 'desc' }, { id: 'asc' }]);
+    });
+
+    it('honours an explicit direction', async () => {
+      await service.findAll({ sortBy: 'annualRent', sortOrder: 'asc' });
+
+      expect(orderByOf()[0]).toEqual({ annualRent: 'asc' });
+    });
+
+    it('can reverse the building grouping', async () => {
+      await service.findAll({ sortBy: 'building', sortOrder: 'desc' });
+
+      expect(orderByOf()[0]).toEqual({ property: { building: { code: 'desc' } } });
+    });
+  });
+
   describe('contract source (spec §8.3/§8.4)', () => {
     beforeEach(() => {
       prisma.contract.create.mockResolvedValue(mockContract);

@@ -29,6 +29,39 @@ const contractSummaryInclude = {
 
 type ContractWithRelations = Prisma.ContractGetPayload<{ include: typeof contractSummaryInclude }>;
 
+/**
+ * How the contracts list is ordered.
+ *
+ * The default groups every contract for a building together and orders the units
+ * inside it — R6 gets 106, 207, 309, then Office 1, Office 2, then Showroom 1 —
+ * because a flat list ordered by creation date scatters one building's units
+ * across the whole table.
+ *
+ * Named units sort after bare numbers because digits precede letters, which is
+ * the grouping people expect. A unit is finally tie-broken by start date (newest
+ * first) so a renewed unit shows its current contract at the top, then by id so
+ * pagination is stable.
+ */
+export function buildContractOrderBy(
+  sortBy: string,
+  sortOrder?: 'asc' | 'desc',
+): Prisma.ContractOrderByWithRelationInput[] {
+  // Ascending reads naturally for a grouped list; every other column is more
+  // useful newest/largest first.
+  const direction = sortOrder ?? (sortBy === 'building' ? 'asc' : 'desc');
+
+  if (sortBy !== 'building') {
+    return [{ [sortBy]: direction }, { id: 'asc' }];
+  }
+
+  return [
+    { property: { building: { code: direction } } },
+    { property: { unitNumber: direction } },
+    { startDate: 'desc' },
+    { id: 'asc' },
+  ];
+}
+
 @Injectable()
 export class ContractsService {
   private readonly logger = new Logger(ContractsService.name);
@@ -51,11 +84,12 @@ export class ContractsService {
       source,
       startDateFrom,
       startDateTo,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
+      sortBy = 'building',
+      sortOrder,
     } = query;
 
     const skip = (page - 1) * limit;
+    const orderBy = buildContractOrderBy(sortBy, sortOrder);
 
     const where: Prisma.ContractWhereInput = {
       deletedAt: null,
@@ -80,7 +114,7 @@ export class ContractsService {
         where,
         skip,
         take: limit,
-        orderBy: { [sortBy]: sortOrder },
+        orderBy,
         include: contractSummaryInclude,
       }),
       this.prisma.contract.count({ where }),

@@ -68,15 +68,24 @@ export class ListContractsQueryDto {
   startDateTo?: string;
 
   @ApiPropertyOptional({
-    enum: ['contractNumber', 'startDate', 'endDate', 'annualRent', 'createdAt'],
-    default: 'createdAt',
+    enum: ['building', 'contractNumber', 'startDate', 'endDate', 'annualRent', 'createdAt'],
+    default: 'building',
+    description:
+      "'building' keeps every contract for a building together and orders the units within it " +
+      '(106, 207, 309 — then Office 1, Office 2, then Showroom 1…). The other options sort flat ' +
+      'across all buildings.',
   })
   @IsOptional()
-  @IsIn(['contractNumber', 'startDate', 'endDate', 'annualRent', 'createdAt'])
-  sortBy?: string = 'createdAt';
+  @IsIn(['building', 'contractNumber', 'startDate', 'endDate', 'annualRent', 'createdAt'])
+  sortBy?: string = 'building';
 
-  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
+  @ApiPropertyOptional({
+    enum: ['asc', 'desc'],
+    description: "Defaults to 'asc' when grouping by building, 'desc' otherwise.",
+  })
   @IsOptional()
   @IsIn(['asc', 'desc'])
-  sortOrder?: 'asc' | 'desc' = 'desc';
+  // No default here: the service picks the sensible direction per column, so
+  // date and amount sorts still show newest/largest first.
+  sortOrder?: 'asc' | 'desc';
 }
